@@ -1,0 +1,6 @@
+@DecisionService_HostAddress = http://localhost:5282
+
+GET {{DecisionService_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
