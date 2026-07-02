@@ -1,0 +1,24 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+
+# Environment / secrets
+.env
+*.env.local
+
+# Docker
+*.log
+
+# IDE
+.vs/
+.vscode/
+*.swp
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# OS
+.DS_Store
+Thumbs.db
