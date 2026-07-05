@@ -1,0 +1,35 @@
+namespace ApprovalFlow.Contracts;
+
+public class InvoiceState
+{
+    public required string InvoiceId { get; set; }
+    public required string CorrelationId { get; set; }
+    public required string Submitter { get; set; }
+    public required string Vendor { get; set; }
+    public required string Category { get; set; }
+    public decimal Total { get; set; }
+    public DateTime SubmittedAt { get; set; }
+
+    // Layer 1 result
+    public string? DeterministicResult { get; set; }
+    public string? DeterministicReason { get; set; }
+
+    // Layer 2 result
+    public string? AgentRecommendation { get; set; }
+    public string? AgentReasoning { get; set; }
+    public double? AgentConfidence { get; set; }
+    public List<string> PolicyViolations { get; set; } = [];
+
+    // Final decision
+    public required string Status { get; set; }
+    public string? FinalDecision { get; set; }
+    public DateTime? DecidedAt { get; set; }
+
+    // Human decision
+    public string? DecidedBy { get; set; }
+    public string? HumanAction { get; set; }
+
+    // Payment
+    public string? PaymentStatus { get; set; }
+    public DateTime? PaidAt { get; set; }
+}

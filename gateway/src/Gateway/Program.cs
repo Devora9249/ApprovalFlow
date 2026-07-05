@@ -1,11 +1,24 @@
+using System.Text.Json;
 using System.Threading.RateLimiting;
 using ApprovalFlow.Contracts;
 using Dapr.Client;
 using Microsoft.AspNetCore.RateLimiting;
+using Serilog;
+using Serilog.Context;
 
 const string IngestionServiceAppId = "ingestion-service";
 
+Log.Logger = new LoggerConfiguration()
+    .Enrich.FromLogContext()
+    .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj} {Properties:j}{NewLine}{Exception}")
+    .WriteTo.File(
+        "logs/gateway-.log",
+        rollingInterval: RollingInterval.Day,
+        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss} [{Level}] {CorrelationId} {Message}{NewLine}{Exception}")
+    .CreateLogger();
+
 var builder = WebApplication.CreateBuilder(args);
+builder.Host.UseSerilog();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddDaprClient();
