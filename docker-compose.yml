@@ -1,0 +1,94 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+
+  ingestion-service:
+    build:
+      context: .
+      dockerfile: ingestion-service/Dockerfile
+    ports:
+      - "5001:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+    volumes:
+      - "./logs/ingestion-service:/app/logs"
+    depends_on:
+      - redis
+
+  ingestion-service-dapr:
+    image: "daprio/daprd:1.18.1"
+    command:
+      [
+        "./daprd",
+        "-app-id", "ingestion-service",
+        "-app-port", "8080",
+        "-dapr-http-port", "3500",
+        "-resources-path", "/components"
+      ]
+    volumes:
+      - "./dapr/components/:/components"
+    depends_on:
+      - ingestion-service
+    network_mode: "service:ingestion-service"
+
+  gateway:
+    build:
+      context: .
+      dockerfile: gateway/Dockerfile
+    ports:
+      - "5000:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+    volumes:
+      - "./logs/gateway:/app/logs"
+    depends_on:
+      - ingestion-service
+
+  gateway-dapr:
+    image: "daprio/daprd:1.18.1"
+    command:
+      [
+        "./daprd",
+        "-app-id", "gateway",
+        "-app-port", "8080",
+        "-dapr-http-port", "3500",
+        "-resources-path", "/components"
+      ]
+    volumes:
+      - "./dapr/components/:/components"
+    depends_on:
+      - gateway
+    network_mode: "service:gateway"
+
+  decision-service:
+    build:
+      context: .
+      dockerfile: decision-service/Dockerfile
+    ports:
+      - "5002:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - Autonomy__CeilingAmount=${AUTONOMY_CEILING:-500}
+      - Autonomy__ConfidenceThreshold=${AUTONOMY_CONFIDENCE:-0.80}
+    volumes:
+      - "./logs/decision-service:/app/logs"
+    depends_on:
+      - redis
+
+  decision-service-dapr:
+    image: "daprio/daprd:1.18.1"
+    command:
+      [
+        "./daprd",
+        "-app-id", "decision-service",
+        "-app-port", "8080",
+        "-dapr-http-port", "3500",
+        "-resources-path", "/components"
+      ]
+    volumes:
+      - "./dapr/components/:/components"
+    depends_on:
+      - decision-service
+    network_mode: "service:decision-service"

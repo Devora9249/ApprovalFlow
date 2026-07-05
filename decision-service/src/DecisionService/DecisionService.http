@@ -1,0 +1,12 @@
+@DecisionService_HostAddress = http://localhost:5002
+
+GET {{DecisionService_HostAddress}}/health
+Accept: application/json
+
+###
+
+# Replace {{id}} with a trackingId returned by POST /invoices on ingestion-service
+GET {{DecisionService_HostAddress}}/invoices/{{id}}/status
+Accept: application/json
+
+###

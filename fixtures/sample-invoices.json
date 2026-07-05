@@ -1,0 +1,103 @@
+[
+  {
+    "_scenario": "PASS-ALL — should clear Layer 1 and pass to the AI agent (Layer 2, not yet built)",
+    "submitter": "dana.cohen@clearspend.example",
+    "vendor": "Staples",
+    "invoiceNumber": "INV-1001",
+    "category": "office_supplies",
+    "total": 120.00,
+    "taxAmount": 20.00,
+    "receiptPresent": true,
+    "description": "Office restock — paper, pens, folders",
+    "lineItems": [
+      { "description": "Paper + pens", "total": 60.00 },
+      { "description": "Folders + labels", "total": 40.00 }
+    ]
+  },
+  {
+    "_scenario": "MATH-MISMATCH — lineItems + tax != total, should escalate GLOBAL-MATH",
+    "submitter": "dana.cohen@clearspend.example",
+    "vendor": "Staples",
+    "invoiceNumber": "INV-1002",
+    "category": "office_supplies",
+    "total": 999.00,
+    "taxAmount": 20.00,
+    "receiptPresent": true,
+    "description": "Office restock with a math error",
+    "lineItems": [
+      { "description": "Paper + pens", "total": 60.00 },
+      { "description": "Folders + labels", "total": 40.00 }
+    ]
+  },
+  {
+    "_scenario": "MISSING-RECEIPT — no receipt above $25, should escalate GLOBAL-RECEIPT (Journey B: escalate + resume)",
+    "submitter": "amit.levi@clearspend.example",
+    "vendor": "Bistro 19",
+    "invoiceNumber": "INV-1003",
+    "category": "business_meals",
+    "total": 42.00,
+    "taxAmount": 2.00,
+    "receiptPresent": false,
+    "description": "Working lunch with the finance team",
+    "lineItems": [
+      { "description": "Working lunch", "total": 40.00 }
+    ]
+  },
+  {
+    "_scenario": "UNKNOWN-VENDOR — vendor not on the known-vendors list, should escalate GLOBAL-VENDOR",
+    "submitter": "amit.levi@clearspend.example",
+    "vendor": "Totally Unknown Vendor LLC",
+    "invoiceNumber": "INV-1004",
+    "category": "software",
+    "total": 99.00,
+    "taxAmount": 0.00,
+    "receiptPresent": true,
+    "description": "Annual subscription renewal",
+    "lineItems": [
+      { "description": "Subscription", "total": 99.00 }
+    ]
+  },
+  {
+    "_scenario": "OVER-CEILING — total > $500, should escalate AUTONOMY-CEILING",
+    "submitter": "dana.cohen@clearspend.example",
+    "vendor": "Dell Technologies",
+    "invoiceNumber": "INV-1005",
+    "category": "hardware",
+    "total": 750.00,
+    "taxAmount": 0.00,
+    "receiptPresent": true,
+    "description": "Standing desk + monitor arm",
+    "lineItems": [
+      { "description": "Standing desk", "total": 750.00 }
+    ]
+  },
+  {
+    "_scenario": "CATEGORY-NOT-ALLOWED — category not on the white list, should escalate CATEGORY-NOT-ALLOWED",
+    "submitter": "amit.levi@clearspend.example",
+    "vendor": "Bistro 19",
+    "invoiceNumber": "INV-1006",
+    "category": "alcohol",
+    "total": 45.00,
+    "taxAmount": 5.00,
+    "receiptPresent": true,
+    "description": "Client dinner — wine",
+    "lineItems": [
+      { "description": "Wine", "total": 40.00 }
+    ]
+  },
+  {
+    "_scenario": "DUPLICATE (Journey C) — resubmit this AFTER the PASS-ALL invoice above. Same vendor + invoiceNumber + total ('INV-1001') as entry #1 is what triggers the dedupe key match — submitting it produces a brand new trackingId but is blocked with status=duplicate.",
+    "submitter": "dana.cohen@clearspend.example",
+    "vendor": "Staples",
+    "invoiceNumber": "INV-1001",
+    "category": "office_supplies",
+    "total": 120.00,
+    "taxAmount": 20.00,
+    "receiptPresent": true,
+    "description": "Office restock — paper, pens, folders",
+    "lineItems": [
+      { "description": "Paper + pens", "total": 60.00 },
+      { "description": "Folders + labels", "total": 40.00 }
+    ]
+  }
+]
