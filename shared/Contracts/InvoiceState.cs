@@ -18,6 +18,8 @@ public class InvoiceState
     public string? AgentRecommendation { get; set; }
     public string? AgentReasoning { get; set; }
     public double? AgentConfidence { get; set; }
+    public bool? AgentAmountReasonable { get; set; }
+    public bool? AgentItemsConsistentWithCategory { get; set; }
     public List<string> PolicyViolations { get; set; } = [];
 
     // Final decision

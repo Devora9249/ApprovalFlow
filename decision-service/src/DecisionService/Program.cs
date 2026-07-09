@@ -22,6 +22,21 @@ builder.Services.AddDaprClient();
 var autonomySettings = builder.Configuration.GetSection("Autonomy").Get<AutonomySettings>()
     ?? throw new InvalidOperationException("Missing required 'Autonomy' configuration section.");
 builder.Services.AddSingleton(autonomySettings);
+
+var llmSettings = builder.Configuration.GetSection("Llm").Get<LlmSettings>()
+    ?? throw new InvalidOperationException("Missing required 'Llm' configuration section.");
+builder.Services.AddSingleton(llmSettings);
+
+if (string.Equals(llmSettings.Provider, "stub", StringComparison.OrdinalIgnoreCase))
+{
+    builder.Services.AddScoped<ILlmProvider, StubLlmProvider>();
+}
+else
+{
+    builder.Services.AddHttpClient<GeminiProvider>();
+    builder.Services.AddScoped<ILlmProvider>(sp => sp.GetRequiredService<GeminiProvider>());
+}
+
 builder.Services.AddScoped<IInvoiceStateStore, DaprInvoiceStateStore>();
 builder.Services.AddScoped<InvoiceProcessor>();
 

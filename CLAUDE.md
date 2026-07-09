@@ -231,7 +231,7 @@ return DecisionResult.AutoApprove;
 autonomy-ceiling: 500
 autonomy-confidence: 0.80
 llm-provider: gemini
-llm-model: gemini-2.0-flash
+llm-model: gemini-2.5-flash
 white-list-categories: office_supplies,business_meals,transportation,software,hardware
 ```
 
@@ -512,7 +512,7 @@ spec:
 ```
 GEMINI_API_KEY=your_gemini_api_key_here
 LLM_PROVIDER=gemini
-LLM_MODEL=gemini-2.0-flash
+LLM_MODEL=gemini-2.5-flash
 AUTONOMY_CEILING=500
 AUTONOMY_CONFIDENCE=0.80
 ```

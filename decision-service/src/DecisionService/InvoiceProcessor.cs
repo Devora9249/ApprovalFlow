@@ -2,7 +2,11 @@ using ApprovalFlow.Contracts;
 
 namespace DecisionService;
 
-public class InvoiceProcessor(IInvoiceStateStore stateStore, AutonomySettings settings, ILogger<InvoiceProcessor> logger)
+public class InvoiceProcessor(
+    IInvoiceStateStore stateStore,
+    AutonomySettings settings,
+    ILlmProvider llmProvider,
+    ILogger<InvoiceProcessor> logger)
 {
     public async Task ProcessAsync(InvoiceSubmittedEvent submitted)
     {
@@ -70,8 +74,63 @@ public class InvoiceProcessor(IInvoiceStateStore stateStore, AutonomySettings se
 
         if (result.Outcome == PolicyGateOutcome.PassToAgent)
         {
-            logger.LogInformation("Invoice {InvoiceId} passed Layer 1 — awaiting Layer 2 (AI agent, not yet implemented)",
-                invoiceId);
+            await RunAgentAndFinalGateAsync(invoiceId, invoice, state, dedupeKey);
         }
+    }
+
+    private async Task RunAgentAndFinalGateAsync(string invoiceId, InvoiceSubmission invoice, InvoiceState state, string dedupeKey)
+    {
+        var agentRequest = new InvoiceEvaluationRequest(
+            invoice.Vendor,
+            invoice.Category,
+            invoice.Total,
+            invoice.Description,
+            invoice.LineItems);
+
+        AgentResult agentResult;
+        try
+        {
+            agentResult = await llmProvider.EvaluateInvoiceAsync(agentRequest);
+        }
+        catch (AgentException ex)
+        {
+            // Fail fast (M15): if the agent is unreachable or unusable, escalate — never auto-approve.
+            logger.LogError(ex, "Agent evaluation failed for {InvoiceId} — escalating", invoiceId);
+
+            state.PolicyViolations.Add("AGENT-UNAVAILABLE");
+            state.FinalDecision = "escalate";
+            state.Status = "waiting_for_human";
+            await stateStore.SaveAsync(invoiceId, state);
+            await stateStore.SaveAsync(dedupeKey, state);
+            return;
+        }
+
+        state.AgentRecommendation = agentResult.Recommendation;
+        state.AgentReasoning = agentResult.Reasoning;
+        state.AgentConfidence = agentResult.Confidence;
+        state.AgentAmountReasonable = agentResult.AmountReasonable;
+        state.AgentItemsConsistentWithCategory = agentResult.ItemsConsistentWithCategory;
+
+        var finalResult = FinalDecisionGate.Evaluate(agentResult, settings);
+
+        if (finalResult.Outcome == FinalGateOutcome.Escalate)
+        {
+            state.PolicyViolations.AddRange(finalResult.Reasons);
+            state.FinalDecision = "escalate";
+            state.Status = "waiting_for_human";
+        }
+        else
+        {
+            state.FinalDecision = "auto_approve";
+            state.Status = "auto_approved";
+            state.DecidedAt = DateTime.UtcNow;
+        }
+
+        await stateStore.SaveAsync(invoiceId, state);
+        await stateStore.SaveAsync(dedupeKey, state);
+
+        logger.LogInformation(
+            "Layer 2/3 result for {InvoiceId}: agentRecommendation={AgentRecommendation}, confidence={Confidence} | finalDecision={FinalDecision}",
+            invoiceId, agentResult.Recommendation, agentResult.Confidence, state.FinalDecision);
     }
 }
