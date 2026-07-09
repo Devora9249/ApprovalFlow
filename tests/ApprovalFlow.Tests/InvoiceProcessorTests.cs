@@ -87,6 +87,7 @@ public class InvoiceProcessorTests
             Category = invoice.Category,
             Total = invoice.Total,
             SubmittedAt = DateTime.UtcNow,
+            DedupeKey = dedupeKey,
             Status = "waiting_for_submitter"
         });
 

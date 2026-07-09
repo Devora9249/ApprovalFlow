@@ -38,7 +38,9 @@ else
 }
 
 builder.Services.AddScoped<IInvoiceStateStore, DaprInvoiceStateStore>();
+builder.Services.AddScoped<IEventPublisher, DaprEventPublisher>();
 builder.Services.AddScoped<InvoiceProcessor>();
+builder.Services.AddScoped<HumanDecisionProcessor>();
 
 var app = builder.Build();
 
@@ -67,6 +69,51 @@ app.MapGet("/invoices/{id}/status", async (string id, IInvoiceStateStore stateSt
 {
     var state = await stateStore.GetAsync(id);
     return state is null ? Results.NotFound() : Results.Ok(state);
+});
+
+app.MapGet("/invoices/pending", async (IInvoiceStateStore stateStore) =>
+{
+    var pendingIds = await stateStore.GetPendingIdsAsync();
+    var views = new List<PendingInvoiceView>();
+
+    foreach (var id in pendingIds)
+    {
+        var state = await stateStore.GetAsync(id);
+        // Defensive: the index and the per-invoice record are two separate state entries,
+        // so skip anything that's out of sync (already decided, or index entry with no record).
+        if (state is null || state.Status != "waiting_for_human")
+            continue;
+
+        views.Add(new PendingInvoiceView(
+            state.InvoiceId, state.Vendor, state.Category, state.Total,
+            state.AgentRecommendation, state.AgentReasoning, state.AgentConfidence,
+            state.PolicyViolations, state.EscalatedAt));
+    }
+
+    return Results.Ok(views);
+});
+
+app.MapPost("/invoices/{id}/decision", async (
+    string id, HumanDecisionRequest request, HumanDecisionProcessor processor) =>
+{
+    using (LogContext.PushProperty("CorrelationId", id))
+    {
+        var result = await processor.ApplyAsync(id, request);
+
+        return result.Outcome switch
+        {
+            HumanDecisionOutcome.InvoiceNotFound => Results.NotFound(),
+            HumanDecisionOutcome.NotAwaitingHumanDecision => Results.Conflict(new
+            {
+                error = $"Invoice {id} is not awaiting a human decision (status={result.State!.Status})"
+            }),
+            HumanDecisionOutcome.UnknownAction => Results.BadRequest(new
+            {
+                error = $"Unknown action '{request.Action}'. Expected approve, reject or request_more_info."
+            }),
+            _ => Results.Ok(result.State)
+        };
+    }
 });
 
 app.Run();

@@ -10,6 +10,11 @@ public class InvoiceState
     public decimal Total { get; set; }
     public DateTime SubmittedAt { get; set; }
 
+    // Secondary-index key (vendor+invoiceNumber+total) this record is also stored under —
+    // see PolicyGate.BuildDedupeKey. Persisted here so later steps (HITL decision) can find
+    // the dedupe-key copy without re-deriving it from a raw InvoiceSubmission.
+    public required string DedupeKey { get; set; }
+
     // Layer 1 result
     public string? DeterministicResult { get; set; }
     public string? DeterministicReason { get; set; }
@@ -21,6 +26,7 @@ public class InvoiceState
     public bool? AgentAmountReasonable { get; set; }
     public bool? AgentItemsConsistentWithCategory { get; set; }
     public List<string> PolicyViolations { get; set; } = [];
+    public DateTime? EscalatedAt { get; set; }
 
     // Final decision
     public required string Status { get; set; }
@@ -30,6 +36,7 @@ public class InvoiceState
     // Human decision
     public string? DecidedBy { get; set; }
     public string? HumanAction { get; set; }
+    public string? Comment { get; set; }
 
     // Payment
     public string? PaymentStatus { get; set; }
