@@ -26,6 +26,16 @@ public class InvoiceProcessor(
             return;
         }
 
+        // Dedupe key is a secondary index: the authoritative state for a given
+        // vendor+invoiceNumber+total triplet lives here too (not just under invoiceId),
+        // so the duplicate check can look it up without a full state store query. It's
+        // persisted on the state itself (DedupeKey) so the HITL decision endpoint can find
+        // this copy later without re-deriving it from the raw InvoiceSubmission.
+        // NOTE: when the HITL "request_more_info" endpoint sets an invoice's own status to
+        // waiting_for_submitter, it must also update this dedupe-key copy, or a legitimate
+        // resubmission will be wrongly flagged as a duplicate.
+        var dedupeKey = PolicyGate.BuildDedupeKey(invoice);
+
         var state = new InvoiceState
         {
             InvoiceId = invoiceId,
@@ -35,17 +45,11 @@ public class InvoiceProcessor(
             Category = invoice.Category,
             Total = invoice.Total,
             SubmittedAt = submitted.SubmittedAt,
+            DedupeKey = dedupeKey,
             Status = "processing"
         };
         await stateStore.SaveAsync(invoiceId, state);
 
-        // Dedupe key is a secondary index: the authoritative state for a given
-        // vendor+invoiceNumber+total triplet lives here too (not just under invoiceId),
-        // so the duplicate check can look it up without a full state store query.
-        // NOTE: when the HITL "request_more_info" endpoint (Day 6+) sets an invoice's
-        // own status to waiting_for_submitter, it must also update this dedupe-key copy,
-        // or a legitimate resubmission will be wrongly flagged as a duplicate.
-        var dedupeKey = PolicyGate.BuildDedupeKey(invoice);
         var existing = await stateStore.GetAsync(dedupeKey);
 
         if (existing is not null && existing.Status != "waiting_for_submitter")
@@ -61,13 +65,16 @@ public class InvoiceProcessor(
         }
 
         var result = PolicyGate.EvaluateDeterministicChecks(invoice, settings);
+        var escalated = result.Outcome == PolicyGateOutcome.Escalate;
 
-        state.DeterministicResult = result.Outcome == PolicyGateOutcome.Escalate ? "escalate" : "pass_to_agent";
-        state.DeterministicReason = result.Outcome == PolicyGateOutcome.Escalate ? result.Reason : "passed all checks";
-        state.Status = result.Outcome == PolicyGateOutcome.Escalate ? "waiting_for_human" : "processing";
+        state.DeterministicResult = escalated ? "escalate" : "pass_to_agent";
+        state.DeterministicReason = escalated ? result.Reason : "passed all checks";
+        state.Status = escalated ? "waiting_for_human" : "processing";
+        if (escalated) state.EscalatedAt = DateTime.UtcNow;
 
         await stateStore.SaveAsync(invoiceId, state);
         await stateStore.SaveAsync(dedupeKey, state);
+        if (escalated) await stateStore.AddPendingIdAsync(invoiceId);
 
         logger.LogInformation("PolicyGate result for {InvoiceId}: {Result} | Reason: {Reason}",
             invoiceId, state.DeterministicResult, state.DeterministicReason ?? "n/a");
@@ -100,8 +107,10 @@ public class InvoiceProcessor(
             state.PolicyViolations.Add("AGENT-UNAVAILABLE");
             state.FinalDecision = "escalate";
             state.Status = "waiting_for_human";
+            state.EscalatedAt = DateTime.UtcNow;
             await stateStore.SaveAsync(invoiceId, state);
             await stateStore.SaveAsync(dedupeKey, state);
+            await stateStore.AddPendingIdAsync(invoiceId);
             return;
         }
 
@@ -118,6 +127,7 @@ public class InvoiceProcessor(
             state.PolicyViolations.AddRange(finalResult.Reasons);
             state.FinalDecision = "escalate";
             state.Status = "waiting_for_human";
+            state.EscalatedAt = DateTime.UtcNow;
         }
         else
         {
@@ -128,6 +138,7 @@ public class InvoiceProcessor(
 
         await stateStore.SaveAsync(invoiceId, state);
         await stateStore.SaveAsync(dedupeKey, state);
+        if (finalResult.Outcome == FinalGateOutcome.Escalate) await stateStore.AddPendingIdAsync(invoiceId);
 
         logger.LogInformation(
             "Layer 2/3 result for {InvoiceId}: agentRecommendation={AgentRecommendation}, confidence={Confidence} | finalDecision={FinalDecision}",
