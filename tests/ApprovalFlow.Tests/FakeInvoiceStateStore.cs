@@ -7,6 +7,7 @@ internal class FakeInvoiceStateStore : IInvoiceStateStore
 {
     private readonly Dictionary<string, InvoiceState> _store = [];
     private readonly List<string> _pendingIds = [];
+    private readonly List<string> _allInvoiceIds = [];
 
     public Task<InvoiceState?> GetAsync(string key) =>
         Task.FromResult(_store.TryGetValue(key, out var state) ? state : null);
@@ -29,6 +30,15 @@ internal class FakeInvoiceStateStore : IInvoiceStateStore
     public Task RemovePendingIdAsync(string invoiceId)
     {
         _pendingIds.Remove(invoiceId);
+        return Task.CompletedTask;
+    }
+
+    public Task<List<string>> GetAllInvoiceIdsAsync() => Task.FromResult(_allInvoiceIds.ToList());
+
+    public Task AddInvoiceIdAsync(string invoiceId)
+    {
+        if (!_allInvoiceIds.Contains(invoiceId))
+            _allInvoiceIds.Add(invoiceId);
         return Task.CompletedTask;
     }
 }

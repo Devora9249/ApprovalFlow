@@ -227,5 +227,20 @@
       { "description": "Pens and highlighters", "total": 25.00 },
       { "description": "Bluetooth speaker", "total": 45.00 }
     ]
+  },
+  {
+    "_scenario": "PAYMENT FAILURE + COMPENSATION (INV-1012, Journey D) — clears Layer 1 up to the amount ceiling: hardware is whitelisted and Dell Technologies is a known vendor, but $9,500 exceeds the $500 autonomy ceiling, so it escalates on AUTONOMY-CEILING regardless of what Layer 2 would say. After a human approves it via POST /invoices/{id}/decision, PaymentService forces this specific invoice number to fail the mock payment step, exercising the saga's compensation path (reservation released, payment.failed published, no orphaned reservation).",
+    "submitter": "dana.cohen@clearspend.example",
+    "vendor": "Dell Technologies",
+    "invoiceNumber": "INV-1012",
+    "category": "hardware",
+    "total": 9500.00,
+    "taxAmount": 500.00,
+    "receiptPresent": true,
+    "description": "New engineering team laptops and docking stations",
+    "lineItems": [
+      { "description": "Laptops (5x)", "total": 8500.00 },
+      { "description": "Docking stations (5x)", "total": 500.00 }
+    ]
   }
 ]

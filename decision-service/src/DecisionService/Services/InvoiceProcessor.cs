@@ -6,6 +6,7 @@ public class InvoiceProcessor(
     IInvoiceStateStore stateStore,
     AutonomySettings settings,
     ILlmProvider llmProvider,
+    IEventPublisher eventPublisher,
     ILogger<InvoiceProcessor> logger)
 {
     public async Task ProcessAsync(InvoiceSubmittedEvent submitted)
@@ -42,6 +43,7 @@ public class InvoiceProcessor(
             CorrelationId = submitted.CorrelationId,
             Submitter = invoice.Submitter,
             Vendor = invoice.Vendor,
+            InvoiceNumber = invoice.InvoiceNumber,
             Category = invoice.Category,
             Total = invoice.Total,
             SubmittedAt = submitted.SubmittedAt,
@@ -49,6 +51,7 @@ public class InvoiceProcessor(
             Status = "processing"
         };
         await stateStore.SaveAsync(invoiceId, state);
+        await stateStore.AddInvoiceIdAsync(invoiceId);
 
         var existing = await stateStore.GetAsync(dedupeKey);
 
@@ -143,5 +146,14 @@ public class InvoiceProcessor(
         logger.LogInformation(
             "Layer 2/3 result for {InvoiceId}: agentRecommendation={AgentRecommendation}, confidence={Confidence} | finalDecision={FinalDecision}",
             invoiceId, agentResult.Recommendation, agentResult.Confidence, state.FinalDecision);
+
+        // Auto-approval is the other route into the payment saga besides human approval
+        // (HumanDecisionProcessor publishes invoice.approved for that route) — PaymentService
+        // subscribes to this same topic regardless of which path approved the invoice.
+        if (finalResult.Outcome == FinalGateOutcome.AutoApprove)
+        {
+            await eventPublisher.PublishAsync("invoice.approved", state);
+            logger.LogInformation("Published invoice.approved for {InvoiceId}", invoiceId);
+        }
     }
 }
