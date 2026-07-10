@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ApprovalFlow — Submit Invoice</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
+  nav a { margin-right: 1rem; }
+  h1 { font-size: 1.4rem; }
+  label { display: block; margin-top: 1rem; font-weight: 600; }
+  input, select, textarea { width: 100%; padding: 0.5rem; margin-top: 0.25rem; box-sizing: border-box; font-size: 1rem; }
+  .checkbox-row { display: flex; align-items: center; gap: 0.5rem; margin-top: 1rem; }
+  .checkbox-row input { width: auto; }
+  button { padding: 0.6rem 1.2rem; font-size: 1rem; cursor: pointer; }
+  #invoice-form > button[type="submit"] { margin-top: 1.5rem; }
+  #result { margin-top: 1.5rem; padding: 1rem; border-radius: 6px; display: none; }
+  #result.ok { background: #e6f4ea; border: 1px solid #34a853; display: block; }
+  #result.error { background: #fce8e6; border: 1px solid #ea4335; display: block; }
+  .line-items { margin-top: 0.5rem; }
+  .line-item-row { display: flex; gap: 0.5rem; margin-top: 0.5rem; align-items: center; }
+  .line-item-row input { margin-top: 0; }
+  .line-item-row input[data-field="description"] { flex: 3; }
+  .line-item-row input[data-field="total"] { flex: 1; }
+  .line-item-row .remove-item { padding: 0.4rem 0.7rem; margin-top: 0; flex: 0 0 auto; }
+  .add-item { margin-top: 0.75rem; padding: 0.4rem 0.9rem; font-size: 0.9rem; }
+  .items-sum { margin-top: 0.5rem; color: #666; font-size: 0.9rem; }
+</style>
+</head>
+<body>
+<nav>
+  <a href="index.html">Submit</a>
+  <a href="status.html">Status</a>
+  <a href="approval-queue.html">Approval Queue</a>
+  <a href="dashboard.html">Dashboard</a>
+</nav>
+
+<h1>Submit Invoice</h1>
+
+<form id="invoice-form">
+  <label for="submitter">Submitter (email)</label>
+  <input type="email" id="submitter" required placeholder="jane.doe@clearspend.example">
+
+  <label for="vendor">Vendor</label>
+  <input type="text" id="vendor" required placeholder="Staples">
+
+  <label for="invoiceNumber">Invoice Number</label>
+  <input type="text" id="invoiceNumber" required placeholder="INV-2001">
+
+  <label for="category">Category</label>
+  <select id="category" required>
+    <option value="office_supplies">office_supplies</option>
+    <option value="business_meals">business_meals</option>
+    <option value="transportation">transportation</option>
+    <option value="software">software</option>
+    <option value="hardware">hardware</option>
+  </select>
+
+  <label for="total">Total ($)</label>
+  <input type="number" id="total" required min="0.01" step="0.01" placeholder="42.00">
+
+  <label for="taxAmount">Tax Amount ($)</label>
+  <input type="number" id="taxAmount" required min="0" step="0.01" value="0">
+
+  <label for="description">Description</label>
+  <textarea id="description" required rows="3" placeholder="Working lunch with client"></textarea>
+
+  <label>Line Items</label>
+  <div class="line-items" id="line-items"></div>
+  <button type="button" class="add-item" id="add-item-btn">+ Add line item</button>
+  <div class="items-sum" id="items-sum"></div>
+
+  <div class="checkbox-row">
+    <input type="checkbox" id="receiptPresent">
+    <label for="receiptPresent" style="margin:0;">Receipt attached</label>
+  </div>
+
+  <button type="submit">Submit Invoice</button>
+</form>
+
+<div id="result"></div>
+
+<script>
+const GATEWAY_URL = "http://localhost:5000";
+
+const lineItemsEl = document.getElementById("line-items");
+
+function addLineItemRow(description = "", total = "") {
+  const row = document.createElement("div");
+  row.className = "line-item-row";
+  row.innerHTML = `
+    <input type="text" data-field="description" placeholder="Item description" value="${description}">
+    <input type="number" data-field="total" placeholder="0.00" step="0.01" min="0" value="${total}">
+    <button type="button" class="remove-item">✕</button>
+  `;
+  row.querySelector(".remove-item").addEventListener("click", () => {
+    row.remove();
+    updateItemsSum();
+  });
+  row.querySelectorAll("input").forEach(input => input.addEventListener("input", updateItemsSum));
+  lineItemsEl.appendChild(row);
+  updateItemsSum();
+}
+
+function getLineItems() {
+  return Array.from(lineItemsEl.querySelectorAll(".line-item-row")).map(row => ({
+    description: row.querySelector('[data-field="description"]').value,
+    total: parseFloat(row.querySelector('[data-field="total"]').value) || 0
+  }));
+}
+
+function updateItemsSum() {
+  const sum = getLineItems().reduce((acc, item) => acc + item.total, 0);
+  const tax = parseFloat(document.getElementById("taxAmount").value) || 0;
+  const total = parseFloat(document.getElementById("total").value) || 0;
+  const expected = sum + tax;
+  const sumEl = document.getElementById("items-sum");
+  const matches = Math.abs(expected - total) < 0.005;
+  sumEl.textContent = `Line items + tax = $${expected.toFixed(2)} ${matches ? "✓ matches total" : `— total is $${total.toFixed(2)}, will trigger GLOBAL-MATH escalation if it doesn't match`}`;
+}
+
+document.getElementById("add-item-btn").addEventListener("click", () => addLineItemRow());
+document.getElementById("total").addEventListener("input", updateItemsSum);
+document.getElementById("taxAmount").addEventListener("input", updateItemsSum);
+addLineItemRow();
+
+document.getElementById("invoice-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  const payload = {
+    submitter: document.getElementById("submitter").value,
+    vendor: document.getElementById("vendor").value,
+    invoiceNumber: document.getElementById("invoiceNumber").value,
+    category: document.getElementById("category").value,
+    total: parseFloat(document.getElementById("total").value),
+    taxAmount: parseFloat(document.getElementById("taxAmount").value) || 0,
+    receiptPresent: document.getElementById("receiptPresent").checked,
+    description: document.getElementById("description").value,
+    lineItems: getLineItems()
+  };
+
+  const resultEl = document.getElementById("result");
+  resultEl.className = "";
+  resultEl.textContent = "Submitting...";
+  resultEl.style.display = "block";
+
+  try {
+    const res = await fetch(`${GATEWAY_URL}/invoices`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+
+    if (res.ok) {
+      resultEl.className = "ok";
+      resultEl.innerHTML = `<strong>Received.</strong><br>Tracking ID: <code>${data.trackingId}</code><br>Status: ${data.status}`;
+    } else {
+      resultEl.className = "error";
+      resultEl.textContent = `Error: ${JSON.stringify(data)}`;
+    }
+  } catch (err) {
+    resultEl.className = "error";
+    resultEl.textContent = `Request failed: ${err.message}`;
+  }
+});
+</script>
+</body>
+</html>

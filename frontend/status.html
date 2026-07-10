@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ApprovalFlow — Invoice Status</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
+  nav a { margin-right: 1rem; }
+  h1 { font-size: 1.4rem; }
+  .row { display: flex; gap: 0.5rem; margin-top: 1rem; }
+  input { flex: 1; padding: 0.5rem; font-size: 1rem; }
+  button { padding: 0.5rem 1rem; font-size: 1rem; cursor: pointer; }
+  #result { margin-top: 1.5rem; }
+  #result.error { color: #ea4335; }
+  dl { display: grid; grid-template-columns: 10rem 1fr; gap: 0.4rem 1rem; margin-top: 1rem; }
+  dt { font-weight: 600; }
+  dd { margin: 0; word-break: break-word; }
+  ul { margin: 0; padding-left: 1.2rem; }
+</style>
+</head>
+<body>
+<nav>
+  <a href="index.html">Submit</a>
+  <a href="status.html">Status</a>
+  <a href="approval-queue.html">Approval Queue</a>
+  <a href="dashboard.html">Dashboard</a>
+</nav>
+
+<h1>Check Invoice Status</h1>
+
+<div class="row">
+  <input type="text" id="trackingId" placeholder="Tracking ID">
+  <button id="check-btn">Check</button>
+</div>
+
+<div id="result"></div>
+
+<script>
+const GATEWAY_URL = "http://localhost:5000";
+
+async function checkStatus() {
+  const id = document.getElementById("trackingId").value.trim();
+  const resultEl = document.getElementById("result");
+  resultEl.className = "";
+
+  if (!id) {
+    resultEl.className = "error";
+    resultEl.textContent = "Enter a tracking ID.";
+    return;
+  }
+
+  resultEl.textContent = "Checking...";
+
+  try {
+    const res = await fetch(`${GATEWAY_URL}/invoices/${encodeURIComponent(id)}/status`);
+
+    if (res.status === 404) {
+      resultEl.className = "error";
+      resultEl.textContent = "No invoice found for that tracking ID.";
+      return;
+    }
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      resultEl.className = "error";
+      resultEl.textContent = `Error: ${JSON.stringify(data)}`;
+      return;
+    }
+
+    const violations = (data.policyViolations && data.policyViolations.length)
+      ? data.policyViolations.join(", ")
+      : "—";
+
+    resultEl.innerHTML = `
+      <dl>
+        <dt>Status</dt><dd>${data.status ?? "—"}</dd>
+        <dt>Deterministic Result</dt><dd>${data.deterministicResult ?? "—"}</dd>
+        <dt>Deterministic Reason</dt><dd>${data.deterministicReason ?? "—"}</dd>
+        <dt>Final Decision</dt><dd>${data.finalDecision ?? "—"}</dd>
+        <dt>Agent Reasoning</dt><dd>${data.agentReasoning ?? "—"}</dd>
+        <dt>Policy Violations</dt><dd>${violations}</dd>
+        <dt>Payment Status</dt><dd>${data.paymentStatus ?? "—"}</dd>
+      </dl>
+    `;
+  } catch (err) {
+    resultEl.className = "error";
+    resultEl.textContent = `Request failed: ${err.message}`;
+  }
+}
+
+document.getElementById("check-btn").addEventListener("click", checkStatus);
+document.getElementById("trackingId").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") checkStatus();
+});
+</script>
+</body>
+</html>

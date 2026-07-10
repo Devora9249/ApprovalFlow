@@ -5,6 +5,7 @@ public record PendingInvoiceView(
     string Vendor,
     string Category,
     decimal Total,
+    string? DeterministicReason,
     string? AgentRecommendation,
     string? AgentReasoning,
     double? AgentConfidence,
