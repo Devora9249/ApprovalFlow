@@ -10,8 +10,8 @@ Local development environment reference: what runs where, how to start it, and h
 |---|---|---|---|
 | Gateway | `5000` → `8080` | `5010` | Entry point, rate limiting, no business logic |
 | IngestionService | `5001` → `8080` | `5027` | `POST /invoices` |
-| DecisionService | `5002` → `8080` | `5282` (launchSettings) / `5002` (VS Code debug config) | Subscribes to `invoice.submitted`, policy gate |
-| PaymentService | not built yet (Day 7-8) | — | — |
+| DecisionService | `5002` → `8080` | `5282` (launchSettings) / `5002` (VS Code debug config) | Subscribes to `invoice.submitted`, policy gate; also subscribes to `payment.succeeded`/`payment.failed` |
+| PaymentService | `5003` → `8080` | — | Subscribes to `invoice.approved`, runs the payment saga |
 | Redis | `6380` → `6379` | — | Backs both Dapr state store and pub/sub |
 
 Each app service also has its own Dapr sidecar container (`<service>-dapr`), sharing that service's network namespace (`network_mode: service:<name>`), running `daprd` on its own internal `3500` (HTTP) / gRPC — not exposed to the host individually.
@@ -26,13 +26,16 @@ Each app service also has its own Dapr sidecar container (`<service>-dapr`), sha
 docker compose up --build
 ```
 
-Starts `redis`, `gateway` (+ sidecar), `ingestion-service` (+ sidecar), `decision-service` (+ sidecar). Health checks:
+Starts `redis`, `gateway` (+ sidecar), `ingestion-service` (+ sidecar), `decision-service` (+ sidecar), `payment-service` (+ sidecar). Health checks:
 
 ```powershell
 Invoke-RestMethod http://localhost:5000/health
 Invoke-RestMethod http://localhost:5001/health
 Invoke-RestMethod http://localhost:5002/health
+Invoke-RestMethod http://localhost:5003/health
 ```
+
+To exercise Journey D (payment failure + compensation) with a specific invoice instead of relying on the `INV-1012` fixture, set `FORCE_PAYMENT_FAIL=true` in `.env` before `docker compose up` — PaymentService will fail every mock payment while it's set.
 
 Submit a test invoice (see `fixtures/sample-invoices.json` for ready-made scenarios covering each PolicyGate check):
 

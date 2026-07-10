@@ -41,6 +41,7 @@ builder.Services.AddScoped<IInvoiceStateStore, DaprInvoiceStateStore>();
 builder.Services.AddScoped<IEventPublisher, DaprEventPublisher>();
 builder.Services.AddScoped<InvoiceProcessor>();
 builder.Services.AddScoped<HumanDecisionProcessor>();
+builder.Services.AddScoped<PaymentResultProcessor>();
 
 var app = builder.Build();
 
@@ -64,6 +65,40 @@ app.MapPost("/invoice-submitted", async (InvoiceSubmittedEvent evt, InvoiceProce
     }
     return Results.Ok();
 }).WithTopic("pubsub", "invoice.submitted");
+
+app.MapPost("/payment-succeeded", async (InvoiceState evt, PaymentResultProcessor processor, ILogger<Program> logger) =>
+{
+    using (LogContext.PushProperty("CorrelationId", evt.CorrelationId))
+    {
+        logger.LogInformation("Payment succeeded for {InvoiceId}", evt.InvoiceId);
+        await processor.ApplyAsync(evt);
+    }
+    return Results.Ok();
+}).WithTopic("pubsub", "payment.succeeded");
+
+app.MapPost("/payment-failed", async (InvoiceState evt, PaymentResultProcessor processor, ILogger<Program> logger) =>
+{
+    using (LogContext.PushProperty("CorrelationId", evt.CorrelationId))
+    {
+        logger.LogInformation("Payment failed for {InvoiceId}", evt.InvoiceId);
+        await processor.ApplyAsync(evt);
+    }
+    return Results.Ok();
+}).WithTopic("pubsub", "payment.failed");
+
+app.MapGet("/invoices", async (IInvoiceStateStore stateStore) =>
+{
+    var ids = await stateStore.GetAllInvoiceIdsAsync();
+    var states = new List<InvoiceState>();
+
+    foreach (var id in ids)
+    {
+        var state = await stateStore.GetAsync(id);
+        if (state is not null) states.Add(state);
+    }
+
+    return Results.Ok(states);
+});
 
 app.MapGet("/invoices/{id}/status", async (string id, IInvoiceStateStore stateStore) =>
 {

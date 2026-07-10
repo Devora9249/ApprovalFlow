@@ -98,3 +98,34 @@ services:
     depends_on:
       - decision-service
     network_mode: "service:decision-service"
+
+  payment-service:
+    build:
+      context: .
+      dockerfile: payment-service/Dockerfile
+    ports:
+      - "5003:8080"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - TZ=Asia/Jerusalem
+      - FORCE_PAYMENT_FAIL=${FORCE_PAYMENT_FAIL:-false}
+    volumes:
+      - "./logs/payment-service:/app/logs"
+    depends_on:
+      - redis
+
+  payment-service-dapr:
+    image: "daprio/daprd:1.18.1"
+    command:
+      [
+        "./daprd",
+        "-app-id", "payment-service",
+        "-app-port", "8080",
+        "-dapr-http-port", "3500",
+        "-resources-path", "/components"
+      ]
+    volumes:
+      - "./dapr/components/:/components"
+    depends_on:
+      - payment-service
+    network_mode: "service:payment-service"

@@ -13,4 +13,10 @@ public interface IInvoiceStateStore
     Task<List<string>> GetPendingIdsAsync();
     Task AddPendingIdAsync(string invoiceId);
     Task RemovePendingIdAsync(string invoiceId);
+
+    // Secondary index of every invoiceId ever submitted (never removed, unlike the pending
+    // index above) — backs GET /invoices, for the same reason: the plain Redis state store
+    // has no query API to list all keys of a given shape.
+    Task<List<string>> GetAllInvoiceIdsAsync();
+    Task AddInvoiceIdAsync(string invoiceId);
 }

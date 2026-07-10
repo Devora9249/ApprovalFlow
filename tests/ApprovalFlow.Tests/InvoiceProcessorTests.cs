@@ -8,8 +8,8 @@ namespace ApprovalFlow.Tests;
 public class InvoiceProcessorTests
 {
     private static InvoiceProcessor CreateProcessor(
-        IInvoiceStateStore store, AutonomySettings? settings = null, ILlmProvider? llmProvider = null) =>
-        new(store, settings ?? InvoiceTestData.DefaultSettings(), llmProvider ?? new StubLlmProvider(), NullLogger<InvoiceProcessor>.Instance);
+        IInvoiceStateStore store, AutonomySettings? settings = null, ILlmProvider? llmProvider = null, IEventPublisher? eventPublisher = null) =>
+        new(store, settings ?? InvoiceTestData.DefaultSettings(), llmProvider ?? new StubLlmProvider(), eventPublisher ?? new FakeEventPublisher(), NullLogger<InvoiceProcessor>.Instance);
 
     private static InvoiceSubmittedEvent Wrap(string invoiceId, InvoiceSubmission invoice) =>
         new(invoiceId, invoiceId, DateTime.UtcNow, invoice);
@@ -84,6 +84,7 @@ public class InvoiceProcessorTests
             CorrelationId = "invoice-1",
             Submitter = invoice.Submitter,
             Vendor = invoice.Vendor,
+            InvoiceNumber = invoice.InvoiceNumber,
             Category = invoice.Category,
             Total = invoice.Total,
             SubmittedAt = DateTime.UtcNow,
@@ -117,6 +118,37 @@ public class InvoiceProcessorTests
     }
 
     [Fact]
+    public async Task EveryNewInvoiceId_IsAddedToTheAllInvoicesIndex_IncludingDuplicatesAndEscalations()
+    {
+        var store = new FakeInvoiceStateStore();
+        var processor = CreateProcessor(store);
+        var invoice = InvoiceTestData.ValidInvoice();
+        var escalated = InvoiceTestData.ValidInvoice(category: "alcohol");
+
+        await processor.ProcessAsync(Wrap("invoice-1", invoice));
+        await processor.ProcessAsync(Wrap("invoice-2", invoice)); // duplicate of invoice-1
+        await processor.ProcessAsync(Wrap("invoice-3", escalated));
+
+        var allIds = await store.GetAllInvoiceIdsAsync();
+        Assert.Equal(["invoice-1", "invoice-2", "invoice-3"], allIds);
+    }
+
+    [Fact]
+    public async Task RedeliveredEvent_DoesNotDuplicateEntryInAllInvoicesIndex()
+    {
+        var store = new FakeInvoiceStateStore();
+        var processor = CreateProcessor(store);
+        var invoice = InvoiceTestData.ValidInvoice();
+        var evt = Wrap("invoice-1", invoice);
+
+        await processor.ProcessAsync(evt);
+        await processor.ProcessAsync(evt);
+
+        var allIds = await store.GetAllInvoiceIdsAsync();
+        Assert.Equal(["invoice-1"], allIds);
+    }
+
+    [Fact]
     public async Task DifferentTotal_SameVendorAndInvoiceNumber_IsNotADuplicate()
     {
         var store = new FakeInvoiceStateStore();
@@ -138,7 +170,8 @@ public class InvoiceProcessorTests
     public async Task PassToAgent_AgentRecommendsApproveWithHighConfidence_AutoApproves()
     {
         var store = new FakeInvoiceStateStore();
-        var processor = CreateProcessor(store, llmProvider: new FakeLlmProvider());
+        var eventPublisher = new FakeEventPublisher();
+        var processor = CreateProcessor(store, llmProvider: new FakeLlmProvider(), eventPublisher: eventPublisher);
         var invoice = InvoiceTestData.ValidInvoice();
 
         await processor.ProcessAsync(Wrap("invoice-1", invoice));
@@ -147,19 +180,25 @@ public class InvoiceProcessorTests
         Assert.Equal("auto_approved", state!.Status);
         Assert.Equal("auto_approve", state.FinalDecision);
         Assert.Equal(0.95, state.AgentConfidence);
+
+        // Auto-approval must also feed PaymentService — not just human approval.
+        var published = Assert.Single(eventPublisher.Published);
+        Assert.Equal("invoice.approved", published.Topic);
+        Assert.Equal("auto_approved", Assert.IsType<InvoiceState>(published.Payload).Status);
     }
 
     [Fact]
     public async Task PassToAgent_AgentConfidenceBelowThreshold_EscalatesWithAutonomyConfidenceReason()
     {
         var store = new FakeInvoiceStateStore();
+        var eventPublisher = new FakeEventPublisher();
         var lowConfidenceResult = new AgentResult(
             Reasoning: "Unsure",
             AmountReasonable: true,
             ItemsConsistentWithCategory: true,
             Confidence: 0.50,
             Recommendation: "escalate");
-        var processor = CreateProcessor(store, llmProvider: new FakeLlmProvider(lowConfidenceResult));
+        var processor = CreateProcessor(store, llmProvider: new FakeLlmProvider(lowConfidenceResult), eventPublisher: eventPublisher);
         var invoice = InvoiceTestData.ValidInvoice();
 
         await processor.ProcessAsync(Wrap("invoice-1", invoice));
@@ -168,6 +207,9 @@ public class InvoiceProcessorTests
         Assert.Equal("waiting_for_human", state!.Status);
         Assert.Equal("escalate", state.FinalDecision);
         Assert.Contains(FinalDecisionGate.LowConfidence, state.PolicyViolations);
+
+        // Escalated invoices wait for a human decision — must not jump straight to payment.
+        Assert.Empty(eventPublisher.Published);
     }
 
     [Fact]

@@ -8,7 +8,7 @@ namespace ApprovalFlow.Tests;
 public class HumanDecisionProcessorTests
 {
     private static InvoiceProcessor CreateInvoiceProcessor(IInvoiceStateStore store) =>
-        new(store, InvoiceTestData.DefaultSettings(), new StubLlmProvider(), NullLogger<InvoiceProcessor>.Instance);
+        new(store, InvoiceTestData.DefaultSettings(), new StubLlmProvider(), new FakeEventPublisher(), NullLogger<InvoiceProcessor>.Instance);
 
     private static HumanDecisionProcessor CreateDecisionProcessor(IInvoiceStateStore store, IEventPublisher publisher) =>
         new(store, publisher, NullLogger<HumanDecisionProcessor>.Instance);

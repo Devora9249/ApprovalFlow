@@ -6,6 +6,7 @@ public class InvoiceState
     public required string CorrelationId { get; set; }
     public required string Submitter { get; set; }
     public required string Vendor { get; set; }
+    public required string InvoiceNumber { get; set; }
     public required string Category { get; set; }
     public decimal Total { get; set; }
     public DateTime SubmittedAt { get; set; }
