@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ApprovalFlow — Approval Queue</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
+  nav a { margin-right: 1rem; }
+  h1 { font-size: 1.4rem; }
+  .approver-row { display: flex; gap: 0.5rem; align-items: center; margin-top: 1rem; }
+  .approver-row input { padding: 0.4rem; font-size: 1rem; }
+  .card { border: 1px solid #ccc; border-radius: 6px; padding: 1rem; margin-top: 1rem; }
+  .card h3 { margin: 0 0 0.5rem; }
+  dl { display: grid; grid-template-columns: 8rem 1fr; gap: 0.3rem 1rem; margin: 0.5rem 0; }
+  dt { font-weight: 600; }
+  dd { margin: 0; word-break: break-word; }
+  .comment-row { margin-top: 0.75rem; }
+  .comment-row label { display: block; font-weight: 600; font-size: 0.9rem; margin-bottom: 0.25rem; }
+  .comment-row textarea { width: 100%; padding: 0.4rem; font-size: 0.95rem; box-sizing: border-box; resize: vertical; }
+  .actions { margin-top: 0.75rem; display: flex; gap: 0.5rem; }
+  .actions button { padding: 0.4rem 0.9rem; cursor: pointer; }
+  .approve { background: #34a853; color: white; border: none; border-radius: 4px; }
+  .reject { background: #ea4335; color: white; border: none; border-radius: 4px; }
+  .info { background: #fbbc04; border: none; border-radius: 4px; }
+  #empty, #load-error { color: #666; margin-top: 1.5rem; }
+</style>
+</head>
+<body>
+<nav>
+  <a href="index.html">Submit</a>
+  <a href="status.html">Status</a>
+  <a href="approval-queue.html">Approval Queue</a>
+  <a href="dashboard.html">Dashboard</a>
+</nav>
+
+<h1>Approval Queue</h1>
+
+<div class="approver-row">
+  <label for="approverId">Approver ID:</label>
+  <input type="text" id="approverId" value="approver@clearspend.example">
+  <button id="refresh-btn">Refresh</button>
+</div>
+
+<div id="queue"></div>
+<div id="empty" style="display:none;">No invoices waiting for human review.</div>
+<div id="load-error" style="display:none;"></div>
+
+<script>
+const GATEWAY_URL = "http://localhost:5000";
+
+async function loadQueue() {
+  const queueEl = document.getElementById("queue");
+  const emptyEl = document.getElementById("empty");
+  const errorEl = document.getElementById("load-error");
+  queueEl.innerHTML = "";
+  emptyEl.style.display = "none";
+  errorEl.style.display = "none";
+
+  try {
+    const res = await fetch(`${GATEWAY_URL}/invoices/pending`);
+    const data = await res.json();
+
+    if (!res.ok) {
+      errorEl.style.display = "block";
+      errorEl.textContent = `Error loading queue: ${JSON.stringify(data)}`;
+      return;
+    }
+
+    if (!data.length) {
+      emptyEl.style.display = "block";
+      return;
+    }
+
+    for (const inv of data) {
+      queueEl.appendChild(renderCard(inv));
+    }
+  } catch (err) {
+    errorEl.style.display = "block";
+    errorEl.textContent = `Request failed: ${err.message}`;
+  }
+}
+
+function renderCard(inv) {
+  const card = document.createElement("div");
+  card.className = "card";
+
+  const violations = (inv.policyViolations && inv.policyViolations.length)
+    ? inv.policyViolations.join(", ")
+    : "—";
+  const confidence = (inv.agentConfidence != null) ? inv.agentConfidence.toFixed(2) : "—";
+
+  card.innerHTML = `
+    <h3>${inv.vendor} — $${Number(inv.total).toFixed(2)}</h3>
+    <dl>
+      <dt>Invoice ID</dt><dd>${inv.invoiceId}</dd>
+      <dt>Deterministic Reason</dt><dd>${inv.deterministicReason ?? "—"}</dd>
+      <dt>Agent Reasoning</dt><dd>${inv.agentReasoning ?? "—"}</dd>
+      <dt>Confidence</dt><dd>${confidence}</dd>
+      <dt>Policy Violations</dt><dd>${violations}</dd>
+    </dl>
+    <div class="comment-row">
+      <label>Comment (optional)</label>
+      <textarea class="comment" rows="2" placeholder="Reason for this decision..."></textarea>
+    </div>
+    <div class="actions">
+      <button class="approve">Approve</button>
+      <button class="reject">Reject</button>
+      <button class="info">Request More Info</button>
+    </div>
+    <div class="decision-result" style="margin-top:0.5rem;"></div>
+  `;
+
+  card.querySelector(".approve").addEventListener("click", () => decide(inv.invoiceId, "approve", card));
+  card.querySelector(".reject").addEventListener("click", () => decide(inv.invoiceId, "reject", card));
+  card.querySelector(".info").addEventListener("click", () => decide(inv.invoiceId, "request_more_info", card));
+
+  return card;
+}
+
+async function decide(invoiceId, action, card) {
+  const approverId = document.getElementById("approverId").value.trim();
+  const comment = card.querySelector(".comment").value.trim();
+  const resultEl = card.querySelector(".decision-result");
+  resultEl.textContent = "Submitting...";
+
+  try {
+    const res = await fetch(`${GATEWAY_URL}/invoices/${encodeURIComponent(invoiceId)}/decision`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action, approverId, comment: comment || null })
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      resultEl.textContent = `Error: ${JSON.stringify(data)}`;
+      return;
+    }
+
+    resultEl.textContent = `Done — status is now "${data.status}".`;
+    setTimeout(loadQueue, 800);
+  } catch (err) {
+    resultEl.textContent = `Request failed: ${err.message}`;
+  }
+}
+
+document.getElementById("refresh-btn").addEventListener("click", loadQueue);
+loadQueue();
+</script>
+</body>
+</html>

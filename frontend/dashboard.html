@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ApprovalFlow — Dashboard</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
+  nav a { margin-right: 1rem; }
+  h1 { font-size: 1.4rem; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-top: 1.5rem; }
+  .stat { border: 1px solid #ccc; border-radius: 6px; padding: 1rem; text-align: center; }
+  .stat .value { font-size: 1.8rem; font-weight: 700; }
+  .stat .label { color: #666; margin-top: 0.25rem; font-size: 0.9rem; }
+  button { margin-top: 1.5rem; padding: 0.5rem 1rem; font-size: 1rem; cursor: pointer; }
+  #load-error { color: #ea4335; margin-top: 1rem; }
+</style>
+</head>
+<body>
+<nav>
+  <a href="index.html">Submit</a>
+  <a href="status.html">Status</a>
+  <a href="approval-queue.html">Approval Queue</a>
+  <a href="dashboard.html">Dashboard</a>
+</nav>
+
+<h1>Dashboard</h1>
+<button id="refresh-btn">Refresh</button>
+
+<div class="grid" id="grid"></div>
+<div id="load-error" style="display:none;"></div>
+
+<script>
+const GATEWAY_URL = "http://localhost:5000";
+
+async function loadStats() {
+  const gridEl = document.getElementById("grid");
+  const errorEl = document.getElementById("load-error");
+  errorEl.style.display = "none";
+
+  try {
+    const res = await fetch(`${GATEWAY_URL}/dashboard/stats`);
+    const data = await res.json();
+
+    if (!res.ok) {
+      errorEl.style.display = "block";
+      errorEl.textContent = `Error loading stats: ${JSON.stringify(data)}`;
+      return;
+    }
+
+    const fmt = (n) => `$${Number(n).toFixed(2)}`;
+
+    gridEl.innerHTML = `
+      ${stat(data.totalInvoices, "Total Invoices")}
+      ${stat(data.autoApproved, "Auto Approve")}
+      ${stat(data.humanApproved, "Human Approved")}
+      ${stat(data.escalated, "Escalated")}
+      ${stat(data.rejected, "Rejected")}
+      ${stat(data.duplicates, "Duplicates")}
+      ${stat(fmt(data.totalAutoApprovedAmount), "Total Auto-Approved $")}
+      ${stat(fmt(data.totalHumanApprovedAmount), "Total Human-Approved $")}
+    `;
+  } catch (err) {
+    errorEl.style.display = "block";
+    errorEl.textContent = `Request failed: ${err.message}`;
+  }
+}
+
+function stat(value, label) {
+  return `<div class="stat"><div class="value">${value}</div><div class="label">${label}</div></div>`;
+}
+
+document.getElementById("refresh-btn").addEventListener("click", loadStats);
+loadStats();
+</script>
+</body>
+</html>

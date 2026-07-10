@@ -121,6 +121,7 @@ app.MapGet("/invoices/pending", async (IInvoiceStateStore stateStore) =>
 
         views.Add(new PendingInvoiceView(
             state.InvoiceId, state.Vendor, state.Category, state.Total,
+            state.DeterministicReason,
             state.AgentRecommendation, state.AgentReasoning, state.AgentConfidence,
             state.PolicyViolations, state.EscalatedAt));
     }
@@ -149,6 +150,33 @@ app.MapPost("/invoices/{id}/decision", async (
             _ => Results.Ok(result.State)
         };
     }
+});
+
+app.MapGet("/dashboard/stats", async (IInvoiceStateStore stateStore) =>
+{
+    var ids = await stateStore.GetAllInvoiceIdsAsync();
+    var states = new List<InvoiceState>();
+
+    foreach (var id in ids)
+    {
+        var state = await stateStore.GetAsync(id);
+        if (state is not null) states.Add(state);
+    }
+
+    var autoApproved = states.Where(s => s.Status == "auto_approved").ToList();
+    var humanApproved = states.Where(s => s.Status == "approved").ToList();
+
+    var stats = new DashboardStats(
+        TotalInvoices: states.Count,
+        AutoApproved: autoApproved.Count,
+        HumanApproved: humanApproved.Count,
+        Escalated: states.Count(s => s.Status == "waiting_for_human"),
+        Rejected: states.Count(s => s.Status == "rejected"),
+        Duplicates: states.Count(s => s.Status == "duplicate"),
+        TotalAutoApprovedAmount: autoApproved.Sum(s => s.Total),
+        TotalHumanApprovedAmount: humanApproved.Sum(s => s.Total));
+
+    return Results.Ok(stats);
 });
 
 app.Run();
