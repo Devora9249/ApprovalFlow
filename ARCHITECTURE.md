@@ -2,8 +2,8 @@
 
 **Company:** ClearSpend Ltd.
 **System:** Invoice & Expense Approval Platform
-**Version:** 1.0
-**Last Updated:** July 2026
+**Version:** 1.2
+**Last Updated:** July 12, 2026 — revised to match the implementation as built (see §7–§11); JWT authentication and role-based authorization added (N1, see §14)
 
 ---
 
@@ -28,7 +28,8 @@ ApprovalFlow is a microservice-based, AI-assisted platform that automates invoic
 
 ### 3.1 Gateway
 - Single external entry point for all client requests
-- Rate limiting (max 100 requests/minute per user)
+- Issues JWTs via `POST /auth/token` and validates them on every other request; enforces per-endpoint, role-based authorization (N1 — see §14)
+- Rate limiting (max 100 requests/minute, partitioned by client IP)
 - Routes requests to the correct service via Dapr service invocation
 - No business logic
 
@@ -62,7 +63,7 @@ ApprovalFlow is a microservice-based, AI-assisted platform that automates invoic
 
 | Component | Technology |
 |---|---|
-| Language | C# / .NET 8 |
+| Language | C# / .NET 9 |
 | Communication | Dapr (service invocation + pub/sub) |
 | State Store | Dapr State Store (Redis) |
 | Message Broker | Dapr pub/sub (Redis) |
@@ -140,7 +141,7 @@ Returns structured output (reasoning first):
 ```mermaid
 graph TB
     UI[UI - HTML/JS]
-    GW[Gateway<br/>rate limiting]
+    GW[Gateway<br/>JWT auth + RBAC + rate limiting]
     IS[IngestionService<br/>intake + trackingId]
     DS[DecisionService<br/>policy gate + agent + HITL]
     PS[PaymentService<br/>saga + compensation]
@@ -149,7 +150,8 @@ graph TB
     GM[Gemini AI]
     AP[Approver UI]
 
-    UI -->|REST| GW
+    UI -->|POST /auth/token - public, no token| GW
+    UI -->|REST + Authorization: Bearer JWT| GW
     GW -->|Dapr invoke - sync| IS
     IS -->|returns trackingId| GW
     IS -->|invoice.submitted| PB
@@ -161,7 +163,7 @@ graph TB
     PS -->|reads/writes state| RS
     PS -->|payment.succeeded / payment.failed| PB
     PB -->|payment result| DS
-    AP -->|POST decision| GW
+    AP -->|POST decision + Authorization: Bearer JWT| GW
     GW -->|Dapr invoke - sync| DS
 ```
 
@@ -182,33 +184,32 @@ sequenceDiagram
 
     U->>GW: POST /invoices (invoice data)
     GW->>IS: Dapr invoke
-    IS->>ST: Check duplicate
-    ST-->>IS: not found
+    IS->>IS: validate required fields present
     IS->>PB: publish invoice.submitted
-    IS-->>GW: { trackingId, status: received }
-    GW-->>U: 202 Accepted + trackingId
+    IS-->>GW: 200 OK { trackingId, status: received }
+    GW-->>U: 200 OK + trackingId
+
+    Note over IS,ST: IngestionService does NOT touch state or check duplicates —<br/>it only validates shape and publishes. Layer 1 (including the<br/>duplicate check) runs entirely inside DecisionService below.
 
     PB->>DS: invoice.submitted
-    DS->>ST: save state (processing)
-    DS->>DS: Layer 1 - deterministic checks
-    
-    alt Stopped by code
-        DS->>ST: save state (escalated / duplicate / rejected)
-    else Passed to agent
-        DS->>AI: structured prompt
+    DS->>ST: save state (status: processing)
+    DS->>ST: look up dedupe key (vendor + invoiceNumber + total)
+
+    alt Dedupe key already has a non-resubmission record
+        DS->>ST: save state (status: duplicate)
+    else Layer 1 deterministic checks fail
+        DS->>ST: save state (status: waiting_for_human, deterministicReason)
+    else Layer 1 passes
+        DS->>AI: structured prompt (Layer 2)
         AI-->>DS: { reasoning, confidence, recommendation }
-        DS->>DS: Layer 3 - final gate
-        
+        DS->>DS: Layer 3 - final gate (code always decides, M12)
+
         alt Auto Approved
-            DS->>ST: save state (auto_approved)
+            DS->>ST: save state (status: auto_approved)
             DS->>PB: publish invoice.approved
-            PB->>PS: invoice.approved
-            PS->>ST: reserve budget
-            PS->>PS: execute payment (mock)
-            PS->>ST: update status (paid)
-            PS->>PB: publish payment.succeeded
+            Note over PB: PaymentService takes it from here — see §9 Payment Saga Flow
         else Escalated
-            DS->>ST: save state (waiting_for_human)
+            DS->>ST: save state (status: waiting_for_human, policyViolations)
         end
     end
 
@@ -216,8 +217,8 @@ sequenceDiagram
     GW->>DS: Dapr invoke
     DS->>ST: read state
     ST-->>DS: current state
-    DS-->>GW: { status, reason }
-    GW-->>U: status + plain-language reason
+    DS-->>GW: full InvoiceState JSON (status, deterministicReason, agent fields, paymentStatus, ...)
+    GW-->>U: 200 OK + InvoiceState
 ```
 
 ---
@@ -226,24 +227,31 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
+    participant AP as Approver (UI)
+    participant GW as Gateway
     participant DS as DecisionService
     participant ST as Dapr State
-    participant AP as Approver
-    participant PS as PaymentService
+    participant PB as Pub/Sub
 
     DS->>ST: save { status: waiting_for_human, agentReasoning, confidence, policyViolations }
-    
+
     Note over ST: Service may restart here — state is safe
-    
-    AP->>DS: GET /invoices/pending
-    DS->>ST: read all waiting_for_human
+
+    AP->>GW: GET /invoices/pending
+    GW->>DS: Dapr invoke
+    DS->>ST: read pending-id index, filter to status == waiting_for_human
     ST-->>DS: list of pending invoices
     DS-->>AP: queue with agent reasoning + confidence
 
-    AP->>DS: POST /invoices/{id}/decision { action: approve }
-    DS->>ST: read saved state
-    DS->>ST: update status (approved)
-    DS->>PS: publish invoice.approved
+    AP->>GW: POST /invoices/{id}/decision { action: approve | reject | request_more_info }
+    GW->>DS: Dapr invoke
+    DS->>ST: read saved state, verify status == waiting_for_human
+    DS->>ST: update status (approved / rejected / waiting_for_submitter), decidedBy, decidedAt
+
+    alt action = approve
+        DS->>PB: publish invoice.approved
+        Note over PB: PaymentService subscribes to this — see §9
+    end
 ```
 
 ---
@@ -257,28 +265,29 @@ sequenceDiagram
     participant PS as PaymentService
     participant ST as Dapr State
 
-    DS->>PB: publish invoice.approved
+    DS->>PB: publish invoice.approved (from auto-approve or human approval alike)
 
     PB->>PS: invoice.approved
-    PS->>ST: check idempotency (already paid?)
-    
-    alt Already processed
-        PS-->>PS: return (do nothing)
-    else Not yet processed
-        PS->>ST: save reservation { status: reserved }
-        PS->>PS: execute payment (mock)
-        
+    PS->>ST: check for an existing reservation under this invoiceId
+
+    alt Reservation already exists
+        PS-->>PS: return (do nothing) — guards against at-least-once redelivery of invoice.approved
+    else No reservation yet
+        PS->>ST: save reservation { invoiceId, status: reserved, amount }
+        PS->>PS: execute mock payment
+
         alt Payment succeeds
-            PS->>ST: update { status: paid }
-            PS->>PB: publish payment.succeeded
+            PS->>ST: update reservation { status: paid, paidAt }
+            PS->>PB: publish payment.succeeded { invoice with paymentStatus: paid }
             PB->>DS: payment.succeeded
-            DS->>ST: update invoice { status: paid }
+            DS->>ST: update invoice { paymentStatus: paid, paidAt }
+            Note over DS,ST: invoice.status is untouched here — it stays auto_approved/approved.<br/>paymentStatus is a separate field (see §10 State Model).
         else Payment fails
-            PS->>ST: update { status: payment-failed }
-            Note over PS: Compensation — reservation released
-            PS->>PB: publish payment.failed
+            PS->>ST: update reservation { status: payment-failed }
+            Note over PS: Compensation — reservation released, nothing left in "reserved" state
+            PS->>PB: publish payment.failed { invoice with paymentStatus: payment-failed }
             PB->>DS: payment.failed
-            DS->>ST: update invoice { status: payment-failed }
+            DS->>ST: update invoice { paymentStatus: payment-failed }
         end
     end
 ```
@@ -287,55 +296,76 @@ sequenceDiagram
 
 ## 10. State Model
 
-Every invoice is stored in Dapr State Store under its `invoiceId`:
+Every invoice is stored in Dapr State Store under two keys with identical content: `invoiceId` (a generated GUID — the primary record) and a secondary dedupe-key index `vendor_invoiceNumber_total` (used by the duplicate check, since Redis has no secondary indexes of its own). **`invoiceId` is not the same thing as `invoiceNumber`** — the former is a system-generated tracking id, the latter is the human-entered invoice number from the submission (e.g. `"INV-1003"`), which is what the duplicate check actually keys on.
+
+Example — an escalated invoice (missing receipt) that a human then approved, and payment succeeded:
 
 ```json
 {
-  "invoiceId": "INV-1001",
-  "correlationId": "INV-1001",
-  "submitter": "dana.cohen@clearspend.example",
+  "invoiceId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "correlationId": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "submitter": "amit.levi@clearspend.example",
   "vendor": "Bistro 19",
-  "category": "meals",
+  "invoiceNumber": "INV-1003",
+  "category": "business_meals",
   "total": 42.00,
-  "submittedAt": "2026-05-12T10:00:00Z",
+  "submittedAt": "2026-07-12T10:00:00Z",
+  "dedupeKey": "bistro 19_inv-1003_42.00",
 
-  "deterministicResult": "pass_to_agent",
-  "deterministicReason": "passed all checks",
+  "deterministicResult": "escalate",
+  "deterministicReason": "GLOBAL-RECEIPT",
 
-  "agentRecommendation": "auto_approve",
-  "agentReasoning": "Amount of $42 for a working lunch is reasonable.",
-  "agentConfidence": 0.95,
+  "agentRecommendation": null,
+  "agentReasoning": null,
+  "agentConfidence": null,
+  "agentAmountReasonable": null,
+  "agentItemsConsistentWithCategory": null,
   "policyViolations": [],
+  "escalatedAt": "2026-07-12T10:00:00Z",
 
-  "finalDecision": "auto_approve",
-  "decidedAt": "2026-05-12T10:00:05Z",
+  "status": "approved",
+  "finalDecision": null,
+  "decidedAt": "2026-07-12T10:05:00Z",
+
+  "decidedBy": "approver-1",
+  "humanAction": "approve",
+  "comment": null,
 
   "paymentStatus": "paid",
-  "paidAt": "2026-05-12T10:00:10Z"
+  "paidAt": "2026-07-12T10:05:03Z"
 }
 ```
 
+Note that `agentRecommendation`/`agentReasoning`/etc. stay `null` here — this invoice never reached Layer 2 because it was escalated by Layer 1 (`GLOBAL-RECEIPT`) before the agent was ever called. A clean auto-approve populates the agent fields and `finalDecision` instead, and never touches `decidedBy`/`humanAction`/`comment`.
+
 ---
 
-## 11. HITL State Transitions
+## 11. Invoice Lifecycle — Status vs. PaymentStatus
+
+`status` and `paymentStatus` are two **separate, independently-updated fields**, not one combined lifecycle — a common misreading of this model. `status` reaches a terminal value (`auto_approved`, `approved`, `rejected`, `duplicate`) and is never overwritten afterwards; `paymentStatus` starts `null` and is filled in later, asynchronously, by `PaymentResultProcessor` reacting to `payment.succeeded`/`payment.failed`. An `auto_approved` invoice whose payment later fails still has `status: auto_approved` — it does **not** transition to some `payment_failed` status value.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> received
-    received --> processing
-    processing --> auto_approved
-    processing --> escalated
-    processing --> duplicate
-    processing --> rejected
-    escalated --> waiting_for_human
-    waiting_for_human --> approved
-    waiting_for_human --> rejected
-    waiting_for_human --> waiting_for_submitter
-    waiting_for_submitter --> received
-    approved --> paid
-    approved --> payment_failed
-    auto_approved --> paid
-    auto_approved --> payment_failed
+    [*] --> processing: DecisionService receives invoice.submitted
+    processing --> duplicate: dedupe key already recorded
+    processing --> waiting_for_human: Layer 1 escalates OR Layer 3 escalates OR agent unavailable
+    processing --> auto_approved: Layer 1 + Layer 2 + Layer 3 all pass
+    waiting_for_human --> approved: human action = approve
+    waiting_for_human --> rejected: human action = reject
+    waiting_for_human --> waiting_for_submitter: human action = request_more_info
+    waiting_for_submitter --> processing: resubmission (new invoiceId, same dedupe key)
+
+    note right of auto_approved
+        status is terminal here.
+        paymentStatus (separate field)
+        becomes "paid" or "payment-failed"
+        later, asynchronously.
+    end note
+    note right of approved
+        Same as auto_approved:
+        paymentStatus fills in later
+        without status changing again.
+    end note
 ```
 
 ---
@@ -363,3 +393,72 @@ stateDiagram-v2
 | Mock payment provider | Accepted | Project requirement — no real payment service needed |
 | Choreography over Orchestration | Accepted | 2-3 steps only — orchestration adds unnecessary complexity |
 | Minimal UI | Accepted | Project requires "minimal UI" — not a full application |
+
+---
+
+## 14. Authentication & Authorization (N1)
+
+Gateway is the only service that knows about JWTs — IngestionService, DecisionService, and PaymentService are unauthenticated internally and trust Gateway to have already checked the caller.
+
+### 14.1 Login Flow
+
+```mermaid
+sequenceDiagram
+    participant U as User (browser)
+    participant GW as Gateway
+
+    U->>GW: POST /auth/token { username, password }
+    GW->>GW: TokenService checks credentials against Auth:Users (appsettings.json)
+
+    alt Valid credentials
+        GW->>GW: issue JWT (HS256, 8h expiry, claims: name, role)
+        GW-->>U: 200 OK { token, username, role, expiresAt }
+        U->>U: store token in localStorage
+    else Invalid credentials
+        GW-->>U: 401 Unauthorized
+    end
+
+    Note over U,GW: Every subsequent request carries Authorization: Bearer <token>
+
+    U->>GW: GET/POST <protected endpoint> + Authorization: Bearer <token>
+    GW->>GW: JwtBearer middleware validates signature, issuer, audience, expiry
+
+    alt Token missing or invalid
+        GW-->>U: 401 Unauthorized
+    else Token valid but role not permitted for this endpoint
+        GW-->>U: 403 Forbidden
+    else Token valid and role permitted
+        GW->>GW: Dapr invoke to downstream service (unchanged from pre-N1 flow)
+        GW-->>U: 200 OK (or downstream response)
+    end
+```
+
+`POST /auth/token` and `GET /health` are the only public endpoints. Every other endpoint is protected by a secure-by-default fallback authorization policy — a new endpoint added without an explicit role requirement is rejected with 401, not silently left open.
+
+### 14.2 Roles & Permissions
+
+| Endpoint | submitter | approver | admin |
+|---|---|---|---|
+| `POST /auth/token` | public | public | public |
+| `GET /health` | public | public | public |
+| `POST /invoices` | ✅ | — | ✅ |
+| `GET /invoices/{id}/status` | ✅ | ✅ | ✅ |
+| `GET /invoices/pending` | — | ✅ | ✅ |
+| `POST /invoices/{id}/decision` | — | ✅ | ✅ |
+| `GET /dashboard/stats` | — | ✅ | ✅ |
+
+### 14.3 Predefined Users
+
+Three hardcoded demo accounts, configured in `gateway/src/Gateway/appsettings.json` under `Auth:Users` — never in code:
+
+| Username | Password | Role |
+|---|---|---|
+| `dana` | `pass123` | submitter |
+| `manager1` | `pass456` | approver |
+| `admin` | `pass789` | admin |
+
+Passwords are stored in plaintext, which is acceptable for this demo/coursework scope but would need hashing before any production use.
+
+### 14.4 Signing Key
+
+The HS256 signing key comes from `JWT_SECRET` in `.env` → `Jwt__Secret` container env var (same pattern as `GEMINI_API_KEY`) → never hardcoded, never committed. `JwtSecretValidator` checks it at Gateway startup and fails fast with a clear error if it's missing or shorter than 32 bytes, rather than crashing cryptically on the first login attempt.

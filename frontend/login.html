@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ApprovalFlow — Login</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 360px; margin: 4rem auto; padding: 0 1rem; color: #1a1a1a; }
+  h1 { font-size: 1.4rem; }
+  label { display: block; margin-top: 1rem; font-weight: 600; }
+  input { width: 100%; padding: 0.5rem; margin-top: 0.25rem; box-sizing: border-box; font-size: 1rem; }
+  button { margin-top: 1.5rem; padding: 0.6rem 1.2rem; font-size: 1rem; cursor: pointer; width: 100%; }
+  #result { margin-top: 1rem; padding: 0.75rem; border-radius: 6px; display: none; }
+  #result.error { background: #fce8e6; border: 1px solid #ea4335; display: block; }
+</style>
+</head>
+<body>
+<h1>ApprovalFlow Login</h1>
+
+<form id="login-form">
+  <label for="username">Username</label>
+  <input type="text" id="username" required autocomplete="username" placeholder="dana">
+
+  <label for="password">Password</label>
+  <input type="password" id="password" required autocomplete="current-password">
+
+  <button type="submit">Log in</button>
+</form>
+
+<div id="result"></div>
+
+<script>
+const GATEWAY_URL = "http://localhost:5000";
+
+// Landing page per role after login.
+const LANDING_PAGE = { submitter: "index.html", approver: "approval-queue.html", admin: "dashboard.html" };
+
+document.getElementById("login-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+
+  const username = document.getElementById("username").value.trim();
+  const password = document.getElementById("password").value;
+  const resultEl = document.getElementById("result");
+  resultEl.className = "";
+
+  try {
+    const res = await fetch(`${GATEWAY_URL}/auth/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password })
+    });
+
+    if (!res.ok) {
+      resultEl.className = "error";
+      resultEl.textContent = res.status === 401 ? "Invalid username or password." : `${res.status} - Login failed. Please try again.`;
+      return;
+    }
+
+    const data = await res.json();
+    localStorage.setItem("af_token", data.token);
+    localStorage.setItem("af_username", data.username);
+    localStorage.setItem("af_role", data.role);
+
+    window.location.href = LANDING_PAGE[data.role] ?? "index.html";
+  } catch (err) {
+    resultEl.className = "error";
+    resultEl.textContent = `Request failed: ${err.message}`;
+  }
+});
+</script>
+</body>
+</html>

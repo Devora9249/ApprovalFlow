@@ -18,6 +18,7 @@
     <ProjectReference Include="..\..\shared\Contracts\Contracts.csproj" />
     <ProjectReference Include="..\..\decision-service\src\DecisionService\DecisionService.csproj" />
     <ProjectReference Include="..\..\payment-service\src\PaymentService\PaymentService.csproj" />
+    <ProjectReference Include="..\..\gateway\src\Gateway\Gateway.csproj" />
   </ItemGroup>
 
 </Project>

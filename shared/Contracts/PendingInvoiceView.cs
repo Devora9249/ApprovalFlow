@@ -1,4 +1,4 @@
-namespace DecisionService;
+namespace ApprovalFlow.Contracts;
 
 public record PendingInvoiceView(
     string InvoiceId,

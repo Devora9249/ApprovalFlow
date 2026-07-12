@@ -43,6 +43,7 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - TZ=Asia/Jerusalem
+      - Jwt__Secret=${JWT_SECRET}
     volumes:
       - "./logs/gateway:/app/logs"
     depends_on:

@@ -47,3 +47,43 @@ jobs:
       # constructs Program.cs's DI container or calls the real Gemini API.
       - name: Run unit tests
         run: dotnet test tests/ApprovalFlow.Tests/ApprovalFlow.Tests.csproj --no-restore --configuration Release --logger "console;verbosity=normal"
+
+  publish:
+    needs: build-and-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      matrix:
+        service: [gateway, ingestion-service, decision-service, payment-service]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Set lowercase image owner
+        id: owner
+        run: echo "name=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push ${{ matrix.service }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.service }}/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ steps.owner.outputs.name }}/approvalflow-${{ matrix.service }}:latest
+            ghcr.io/${{ steps.owner.outputs.name }}/approvalflow-${{ matrix.service }}:${{ github.sha }}

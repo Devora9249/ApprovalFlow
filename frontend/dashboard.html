@@ -21,6 +21,7 @@
   <a href="status.html">Status</a>
   <a href="approval-queue.html">Approval Queue</a>
   <a href="dashboard.html">Dashboard</a>
+  <span id="whoami" style="float:right;"></span>
 </nav>
 
 <h1>Dashboard</h1>
@@ -32,20 +33,61 @@
 <script>
 const GATEWAY_URL = "http://localhost:5000";
 
+const token = localStorage.getItem("af_token");
+if (!token) {
+  window.location.href = "login.html";
+}
+document.getElementById("whoami").innerHTML =
+  `${localStorage.getItem("af_username")} (${localStorage.getItem("af_role")}) — <a href="#" id="logout-link">Log out</a>`;
+document.getElementById("logout-link").addEventListener("click", (e) => {
+  e.preventDefault();
+  localStorage.clear();
+  window.location.href = "login.html";
+});
+
+async function authFetch(url, options = {}) {
+  const res = await fetch(url, {
+    ...options,
+    headers: { ...(options.headers || {}), Authorization: `Bearer ${token}` }
+  });
+  if (res.status === 401) {
+    localStorage.clear();
+    window.location.href = "login.html";
+  }
+  return res;
+}
+
+const ERROR_LABELS = {
+  400: "400 - Bad Request",
+  401: "401 - Unauthorized",
+  403: "403 - Forbidden — you don't have permission for this action",
+  404: "404 - Not Found",
+  409: "409 - Conflict",
+  429: "429 - Too Many Requests, please slow down",
+  500: "500 - Server Error"
+};
+
+async function describeError(res) {
+  const label = ERROR_LABELS[res.status] || `${res.status} - Error`;
+  const text = await res.text();
+  return text ? `${label}: ${text}` : label;
+}
+
 async function loadStats() {
   const gridEl = document.getElementById("grid");
   const errorEl = document.getElementById("load-error");
   errorEl.style.display = "none";
 
   try {
-    const res = await fetch(`${GATEWAY_URL}/dashboard/stats`);
-    const data = await res.json();
+    const res = await authFetch(`${GATEWAY_URL}/dashboard/stats`);
 
     if (!res.ok) {
       errorEl.style.display = "block";
-      errorEl.textContent = `Error loading stats: ${JSON.stringify(data)}`;
+      errorEl.textContent = await describeError(res);
       return;
     }
+
+    const data = await res.json();
 
     const fmt = (n) => `$${Number(n).toFixed(2)}`;
 
