@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restore
+        run: |
+          dotnet restore shared/Contracts/Contracts.csproj
+          dotnet restore gateway/src/Gateway/Gateway.csproj
+          dotnet restore ingestion-service/src/IngestionService/IngestionService.csproj
+          dotnet restore decision-service/src/DecisionService/DecisionService.csproj
+          dotnet restore payment-service/src/PaymentService/PaymentService.csproj
+          dotnet restore tests/ApprovalFlow.Tests/ApprovalFlow.Tests.csproj
+
+      - name: Build Contracts
+        run: dotnet build shared/Contracts/Contracts.csproj --no-restore --configuration Release
+
+      - name: Build Gateway
+        run: dotnet build gateway/src/Gateway/Gateway.csproj --no-restore --configuration Release
+
+      - name: Build IngestionService
+        run: dotnet build ingestion-service/src/IngestionService/IngestionService.csproj --no-restore --configuration Release
+
+      - name: Build DecisionService
+        run: dotnet build decision-service/src/DecisionService/DecisionService.csproj --no-restore --configuration Release
+
+      - name: Build PaymentService
+        run: dotnet build payment-service/src/PaymentService/PaymentService.csproj --no-restore --configuration Release
+
+      # Unit tests use StubLlmProvider / FakeLlmProvider only — no test in this suite
+      # constructs Program.cs's DI container or calls the real Gemini API.
+      - name: Run unit tests
+        run: dotnet test tests/ApprovalFlow.Tests/ApprovalFlow.Tests.csproj --no-restore --configuration Release --logger "console;verbosity=normal"
