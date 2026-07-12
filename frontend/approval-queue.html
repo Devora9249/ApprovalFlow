@@ -2,49 +2,58 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ApprovalFlow — Approval Queue</title>
+<link rel="stylesheet" href="styles.css">
 <style>
-  body { font-family: system-ui, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
-  nav a { margin-right: 1rem; }
-  h1 { font-size: 1.4rem; }
-  .approver-row { display: flex; gap: 0.5rem; align-items: center; margin-top: 1rem; }
-  .approver-row input { padding: 0.4rem; font-size: 1rem; }
-  .card { border: 1px solid #ccc; border-radius: 6px; padding: 1rem; margin-top: 1rem; }
-  .card h3 { margin: 0 0 0.5rem; }
-  dl { display: grid; grid-template-columns: 8rem 1fr; gap: 0.3rem 1rem; margin: 0.5rem 0; }
-  dt { font-weight: 600; }
+  .approver-row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
+  .approver-row label { margin: 0; font-weight: 600; font-size: 0.9rem; white-space: nowrap; }
+  .approver-row input { margin: 0; width: 260px; }
+  .queue-card { margin-top: 1.25rem; }
+  .queue-card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+  .queue-card-header h3 { margin: 0; font-size: 1.15rem; }
+  .queue-card-header .invoice-id { color: var(--gray); font-size: 0.8rem; margin-top: 0.15rem; }
+  dl { display: grid; grid-template-columns: 9rem 1fr; gap: 0.4rem 1rem; margin: 1rem 0 0; font-size: 0.9rem; }
+  dt { font-weight: 600; color: var(--gray); }
   dd { margin: 0; word-break: break-word; }
-  .comment-row { margin-top: 0.75rem; }
-  .comment-row label { display: block; font-weight: 600; font-size: 0.9rem; margin-bottom: 0.25rem; }
-  .comment-row textarea { width: 100%; padding: 0.4rem; font-size: 0.95rem; box-sizing: border-box; resize: vertical; }
-  .actions { margin-top: 0.75rem; display: flex; gap: 0.5rem; }
-  .actions button { padding: 0.4rem 0.9rem; cursor: pointer; }
-  .approve { background: #34a853; color: white; border: none; border-radius: 4px; }
-  .reject { background: #ea4335; color: white; border: none; border-radius: 4px; }
-  .info { background: #fbbc04; border: none; border-radius: 4px; }
-  #empty, #load-error { color: #666; margin-top: 1.5rem; }
+  .reasoning-box { background: var(--gray-bg); border-radius: 6px; padding: 0.65rem 0.8rem; font-size: 0.9rem; color: #333; }
+  .confidence-green { color: var(--green); font-weight: 700; }
+  .confidence-orange { color: var(--orange); font-weight: 700; }
+  .comment-row { margin-top: 1rem; }
+  .comment-row label { display: block; font-weight: 600; font-size: 0.9rem; margin-bottom: 0.3rem; }
+  .comment-row textarea { resize: vertical; }
+  .actions { margin-top: 0.9rem; display: flex; gap: 0.6rem; flex-wrap: wrap; }
+  .decision-result { margin-top: 0.6rem; font-size: 0.9rem; color: var(--gray); }
+  #empty, #load-error { color: var(--gray); margin-top: 1.5rem; }
+  #load-error { color: var(--red); }
 </style>
 </head>
 <body>
-<nav>
-  <a href="index.html">Submit</a>
-  <a href="status.html">Status</a>
-  <a href="approval-queue.html">Approval Queue</a>
-  <a href="dashboard.html">Dashboard</a>
-  <span id="whoami" style="float:right;"></span>
-</nav>
-
-<h1>Approval Queue</h1>
-
-<div class="approver-row">
-  <label for="approverId">Approver ID:</label>
-  <input type="text" id="approverId" value="approver@clearspend.example">
-  <button id="refresh-btn">Refresh</button>
+<div class="navbar">
+  <div class="navbar-inner">
+    <div class="navbar-links">
+      <a href="index.html">Submit</a>
+      <a href="status.html">Status</a>
+      <a href="approval-queue.html" class="active">Approval Queue</a>
+      <a href="dashboard.html">Dashboard</a>
+    </div>
+    <div class="navbar-user" id="whoami"></div>
+  </div>
 </div>
 
-<div id="queue"></div>
-<div id="empty" style="display:none;">No invoices waiting for human review.</div>
-<div id="load-error" style="display:none;"></div>
+<div class="page">
+  <h1>Approval Queue</h1>
+
+  <div class="card approver-row">
+    <label for="approverId">Approver ID:</label>
+    <input type="text" id="approverId" value="approver@clearspend.example">
+    <button id="refresh-btn" class="btn btn-gray">Refresh</button>
+  </div>
+
+  <div id="queue"></div>
+  <div id="empty" style="display:none;">No invoices waiting for human review.</div>
+  <div id="load-error" style="display:none;"></div>
+</div>
 
 <script>
 const GATEWAY_URL = "http://localhost:5000";
@@ -54,7 +63,7 @@ if (!token) {
   window.location.href = "login.html";
 }
 document.getElementById("whoami").innerHTML =
-  `${localStorage.getItem("af_username")} (${localStorage.getItem("af_role")}) — <a href="#" id="logout-link">Log out</a>`;
+  `<span>${localStorage.getItem("af_username")}</span><span class="role-badge">${localStorage.getItem("af_role")}</span><button id="logout-link">Log out</button>`;
 document.getElementById("logout-link").addEventListener("click", (e) => {
   e.preventDefault();
   localStorage.clear();
@@ -124,32 +133,43 @@ async function loadQueue() {
 
 function renderCard(inv) {
   const card = document.createElement("div");
-  card.className = "card";
+  card.className = "card queue-card";
 
   const violations = (inv.policyViolations && inv.policyViolations.length)
     ? inv.policyViolations.join(", ")
     : "—";
-  const confidence = (inv.agentConfidence != null) ? inv.agentConfidence.toFixed(2) : "—";
+
+  let confidenceHtml = "—";
+  if (inv.agentConfidence != null) {
+    const pct = inv.agentConfidence * 100;
+    const cls = pct > 80 ? "confidence-green" : "confidence-orange";
+    confidenceHtml = `<span class="${cls}">${pct.toFixed(0)}%</span>`;
+  }
 
   card.innerHTML = `
-    <h3>${inv.vendor} — $${Number(inv.total).toFixed(2)}</h3>
+    <div class="queue-card-header">
+      <div>
+        <h3>${inv.vendor} — $${Number(inv.total).toFixed(2)}</h3>
+        <div class="invoice-id">${inv.invoiceId}</div>
+      </div>
+      <span class="badge badge-orange">waiting_for_human</span>
+    </div>
     <dl>
-      <dt>Invoice ID</dt><dd>${inv.invoiceId}</dd>
       <dt>Deterministic Reason</dt><dd>${inv.deterministicReason ?? "—"}</dd>
-      <dt>Agent Reasoning</dt><dd>${inv.agentReasoning ?? "—"}</dd>
-      <dt>Confidence</dt><dd>${confidence}</dd>
+      <dt>Confidence</dt><dd>${confidenceHtml}</dd>
       <dt>Policy Violations</dt><dd>${violations}</dd>
+      <dt>Agent Reasoning</dt><dd><div class="reasoning-box">${inv.agentReasoning ?? "—"}</div></dd>
     </dl>
     <div class="comment-row">
       <label>Comment (optional)</label>
       <textarea class="comment" rows="2" placeholder="Reason for this decision..."></textarea>
     </div>
     <div class="actions">
-      <button class="approve">Approve</button>
-      <button class="reject">Reject</button>
-      <button class="info">Request More Info</button>
+      <button class="btn btn-green approve">Approve</button>
+      <button class="btn btn-red reject">Reject</button>
+      <button class="btn btn-gray info">Request More Info</button>
     </div>
-    <div class="decision-result" style="margin-top:0.5rem;"></div>
+    <div class="decision-result"></div>
   `;
 
   card.querySelector(".approve").addEventListener("click", () => decide(inv.invoiceId, "approve", card));

@@ -2,33 +2,51 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ApprovalFlow — Dashboard</title>
+<link rel="stylesheet" href="styles.css">
 <style>
-  body { font-family: system-ui, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
-  nav a { margin-right: 1rem; }
-  h1 { font-size: 1.4rem; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-top: 1.5rem; }
-  .stat { border: 1px solid #ccc; border-radius: 6px; padding: 1rem; text-align: center; }
-  .stat .value { font-size: 1.8rem; font-weight: 700; }
-  .stat .label { color: #666; margin-top: 0.25rem; font-size: 0.9rem; }
-  button { margin-top: 1.5rem; padding: 0.5rem 1rem; font-size: 1rem; cursor: pointer; }
-  #load-error { color: #ea4335; margin-top: 1rem; }
+  .dashboard-toolbar { display: flex; justify-content: flex-end; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 1rem; margin-top: 1.25rem; }
+  .stat { display: flex; align-items: center; gap: 0.9rem; }
+  .stat-icon { flex: 0 0 auto; width: 2.6rem; height: 2.6rem; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
+  .stat-icon svg { width: 1.4rem; height: 1.4rem; }
+  .stat-value { font-size: 1.6rem; font-weight: 700; line-height: 1.1; }
+  .stat-label { color: var(--gray); margin-top: 0.15rem; font-size: 0.85rem; }
+  .stat-neutral .stat-icon { background: var(--primary-light); color: var(--primary); }
+  .stat-neutral .stat-value { color: var(--text); }
+  .stat-green .stat-icon { background: var(--green-bg); color: var(--green); }
+  .stat-green .stat-value { color: var(--green); }
+  .stat-orange .stat-icon { background: var(--orange-bg); color: var(--orange); }
+  .stat-orange .stat-value { color: var(--orange); }
+  .stat-red .stat-icon { background: var(--red-bg); color: var(--red); }
+  .stat-red .stat-value { color: var(--red); }
+  #load-error { color: var(--red); margin-top: 1rem; display: none; }
 </style>
 </head>
 <body>
-<nav>
-  <a href="index.html">Submit</a>
-  <a href="status.html">Status</a>
-  <a href="approval-queue.html">Approval Queue</a>
-  <a href="dashboard.html">Dashboard</a>
-  <span id="whoami" style="float:right;"></span>
-</nav>
+<div class="navbar">
+  <div class="navbar-inner">
+    <div class="navbar-links">
+      <a href="index.html">Submit</a>
+      <a href="status.html">Status</a>
+      <a href="approval-queue.html">Approval Queue</a>
+      <a href="dashboard.html" class="active">Dashboard</a>
+    </div>
+    <div class="navbar-user" id="whoami"></div>
+  </div>
+</div>
 
-<h1>Dashboard</h1>
-<button id="refresh-btn">Refresh</button>
+<div class="page">
+  <h1>Dashboard</h1>
 
-<div class="grid" id="grid"></div>
-<div id="load-error" style="display:none;"></div>
+  <div class="dashboard-toolbar">
+    <button id="refresh-btn" class="btn btn-gray">Refresh</button>
+  </div>
+
+  <div class="grid" id="grid"></div>
+  <div id="load-error"></div>
+</div>
 
 <script>
 const GATEWAY_URL = "http://localhost:5000";
@@ -38,7 +56,7 @@ if (!token) {
   window.location.href = "login.html";
 }
 document.getElementById("whoami").innerHTML =
-  `${localStorage.getItem("af_username")} (${localStorage.getItem("af_role")}) — <a href="#" id="logout-link">Log out</a>`;
+  `<span>${localStorage.getItem("af_username")}</span><span class="role-badge">${localStorage.getItem("af_role")}</span><button id="logout-link">Log out</button>`;
 document.getElementById("logout-link").addEventListener("click", (e) => {
   e.preventDefault();
   localStorage.clear();
@@ -73,6 +91,19 @@ async function describeError(res) {
   return text ? `${label}: ${text}` : label;
 }
 
+// Minimal feather-style inline icons (stroke = currentColor), so tiles need no external assets.
+const ICONS = {
+  document: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
+  checkCircle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
+  userCheck: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><polyline points="17 11 19 13 23 9"/></svg>',
+  alertTriangle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10.29 3.86-8.18 14.14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.89-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+  xCircle: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
+  copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+  dollar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>'
+};
+
+const currencyFmt = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+
 async function loadStats() {
   const gridEl = document.getElementById("grid");
   const errorEl = document.getElementById("load-error");
@@ -89,26 +120,32 @@ async function loadStats() {
 
     const data = await res.json();
 
-    const fmt = (n) => `$${Number(n).toFixed(2)}`;
-
-    gridEl.innerHTML = `
-      ${stat(data.totalInvoices, "Total Invoices")}
-      ${stat(data.autoApproved, "Auto Approve")}
-      ${stat(data.humanApproved, "Human Approved")}
-      ${stat(data.escalated, "Escalated")}
-      ${stat(data.rejected, "Rejected")}
-      ${stat(data.duplicates, "Duplicates")}
-      ${stat(fmt(data.totalAutoApprovedAmount), "Total Auto-Approved $")}
-      ${stat(fmt(data.totalHumanApprovedAmount), "Total Human-Approved $")}
-    `;
+    gridEl.innerHTML = [
+      stat(ICONS.document, data.totalInvoices, "Total Invoices", "neutral"),
+      stat(ICONS.checkCircle, data.autoApproved, "Auto Approved", "green"),
+      stat(ICONS.userCheck, data.humanApproved, "Human Approved", "neutral"),
+      stat(ICONS.alertTriangle, data.escalated, "Escalated", "orange"),
+      stat(ICONS.xCircle, data.rejected, "Rejected", "red"),
+      stat(ICONS.copy, data.duplicates, "Duplicates", "neutral"),
+      stat(ICONS.dollar, currencyFmt.format(data.totalAutoApprovedAmount), "Total Auto-Approved", "green"),
+      stat(ICONS.dollar, currencyFmt.format(data.totalHumanApprovedAmount), "Total Human-Approved", "neutral")
+    ].join("");
   } catch (err) {
     errorEl.style.display = "block";
     errorEl.textContent = `Request failed: ${err.message}`;
   }
 }
 
-function stat(value, label) {
-  return `<div class="stat"><div class="value">${value}</div><div class="label">${label}</div></div>`;
+function stat(icon, value, label, tone) {
+  return `
+    <div class="card stat stat-${tone}">
+      <div class="stat-icon">${icon}</div>
+      <div>
+        <div class="stat-value">${value}</div>
+        <div class="stat-label">${label}</div>
+      </div>
+    </div>
+  `;
 }
 
 document.getElementById("refresh-btn").addEventListener("click", loadStats);

@@ -2,39 +2,48 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ApprovalFlow — Invoice Status</title>
+<link rel="stylesheet" href="styles.css">
 <style>
-  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
-  nav a { margin-right: 1rem; }
-  h1 { font-size: 1.4rem; }
-  .row { display: flex; gap: 0.5rem; margin-top: 1rem; }
-  input { flex: 1; padding: 0.5rem; font-size: 1rem; }
-  button { padding: 0.5rem 1rem; font-size: 1rem; cursor: pointer; }
-  #result { margin-top: 1.5rem; }
-  #result.error { color: #ea4335; }
-  dl { display: grid; grid-template-columns: 10rem 1fr; gap: 0.4rem 1rem; margin-top: 1rem; }
-  dt { font-weight: 600; }
+  .lookup-row { display: flex; gap: 0.6rem; }
+  .lookup-row input { margin: 0; }
+  .lookup-row button { flex: 0 0 auto; }
+  #result { margin-top: 1.25rem; }
+  #result.error { color: var(--red); font-weight: 600; }
+  #result .status-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 0.75rem; }
+  #result .status-header h2 { margin: 0; font-size: 1.1rem; }
+  dl { display: grid; grid-template-columns: 11rem 1fr; gap: 0.5rem 1rem; margin-top: 0; font-size: 0.92rem; }
+  dt { font-weight: 600; color: var(--gray); }
   dd { margin: 0; word-break: break-word; }
-  ul { margin: 0; padding-left: 1.2rem; }
+  details.reasoning { margin-top: 1rem; }
+  details.reasoning summary { cursor: pointer; font-weight: 600; font-size: 0.9rem; color: var(--primary); }
+  details.reasoning .reasoning-box { margin-top: 0.5rem; background: var(--gray-bg); border-radius: 6px; padding: 0.65rem 0.8rem; font-size: 0.9rem; color: #333; }
 </style>
 </head>
 <body>
-<nav>
-  <a href="index.html">Submit</a>
-  <a href="status.html">Status</a>
-  <a href="approval-queue.html">Approval Queue</a>
-  <a href="dashboard.html">Dashboard</a>
-  <span id="whoami" style="float:right;"></span>
-</nav>
-
-<h1>Check Invoice Status</h1>
-
-<div class="row">
-  <input type="text" id="trackingId" placeholder="Tracking ID">
-  <button id="check-btn">Check</button>
+<div class="navbar">
+  <div class="navbar-inner">
+    <div class="navbar-links">
+      <a href="index.html">Submit</a>
+      <a href="status.html" class="active">Status</a>
+      <a href="approval-queue.html">Approval Queue</a>
+      <a href="dashboard.html">Dashboard</a>
+    </div>
+    <div class="navbar-user" id="whoami"></div>
+  </div>
 </div>
 
-<div id="result"></div>
+<div class="page narrow">
+  <h1>Check Invoice Status</h1>
+
+  <div class="card lookup-row">
+    <input type="text" id="trackingId" placeholder="Tracking ID">
+    <button id="check-btn" class="btn btn-primary">Check</button>
+  </div>
+
+  <div id="result"></div>
+</div>
 
 <script>
 const GATEWAY_URL = "http://localhost:5000";
@@ -44,7 +53,7 @@ if (!token) {
   window.location.href = "login.html";
 }
 document.getElementById("whoami").innerHTML =
-  `${localStorage.getItem("af_username")} (${localStorage.getItem("af_role")}) — <a href="#" id="logout-link">Log out</a>`;
+  `<span>${localStorage.getItem("af_username")}</span><span class="role-badge">${localStorage.getItem("af_role")}</span><button id="logout-link">Log out</button>`;
 document.getElementById("logout-link").addEventListener("click", (e) => {
   e.preventDefault();
   localStorage.clear();
@@ -77,6 +86,17 @@ async function describeError(res) {
   const label = ERROR_LABELS[res.status] || `${res.status} - Error`;
   const text = await res.text();
   return text ? `${label}: ${text}` : label;
+}
+
+const GREEN_STATUSES = new Set(["auto_approved", "approved", "paid"]);
+const RED_STATUSES = new Set(["rejected", "payment_failed", "payment-failed"]);
+const ORANGE_STATUSES = new Set(["waiting_for_human"]);
+
+function badgeClassFor(status) {
+  if (GREEN_STATUSES.has(status)) return "badge-green";
+  if (RED_STATUSES.has(status)) return "badge-red";
+  if (ORANGE_STATUSES.has(status)) return "badge-orange";
+  return "badge-gray";
 }
 
 async function checkStatus() {
@@ -113,16 +133,27 @@ async function checkStatus() {
       ? data.policyViolations.join(", ")
       : "—";
 
+    const status = data.status ?? "—";
+    const badgeHtml = `<span class="badge ${badgeClassFor(status)}">${status}</span>`;
+
+    const reasoningHtml = data.agentReasoning
+      ? `<details class="reasoning"><summary>Agent Reasoning</summary><div class="reasoning-box">${data.agentReasoning}</div></details>`
+      : "";
+
+    resultEl.className = "card";
     resultEl.innerHTML = `
+      <div class="status-header">
+        <h2>Invoice ${id}</h2>
+        ${badgeHtml}
+      </div>
       <dl>
-        <dt>Status</dt><dd>${data.status ?? "—"}</dd>
         <dt>Deterministic Result</dt><dd>${data.deterministicResult ?? "—"}</dd>
         <dt>Deterministic Reason</dt><dd>${data.deterministicReason ?? "—"}</dd>
         <dt>Final Decision</dt><dd>${data.finalDecision ?? "—"}</dd>
-        <dt>Agent Reasoning</dt><dd>${data.agentReasoning ?? "—"}</dd>
         <dt>Policy Violations</dt><dd>${violations}</dd>
         <dt>Payment Status</dt><dd>${data.paymentStatus ?? "—"}</dd>
       </dl>
+      ${reasoningHtml}
     `;
   } catch (err) {
     resultEl.className = "error";

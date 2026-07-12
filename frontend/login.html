@@ -2,31 +2,33 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ApprovalFlow — Login</title>
+<link rel="stylesheet" href="styles.css">
 <style>
-  body { font-family: system-ui, sans-serif; max-width: 360px; margin: 4rem auto; padding: 0 1rem; color: #1a1a1a; }
-  h1 { font-size: 1.4rem; }
-  label { display: block; margin-top: 1rem; font-weight: 600; }
-  input { width: 100%; padding: 0.5rem; margin-top: 0.25rem; box-sizing: border-box; font-size: 1rem; }
-  button { margin-top: 1.5rem; padding: 0.6rem 1.2rem; font-size: 1rem; cursor: pointer; width: 100%; }
-  #result { margin-top: 1rem; padding: 0.75rem; border-radius: 6px; display: none; }
-  #result.error { background: #fce8e6; border: 1px solid #ea4335; display: block; }
+  body { display: flex; min-height: 100vh; align-items: center; justify-content: center; background: var(--primary-light); }
+  .login-page { width: 100%; max-width: 360px; padding: 1rem; }
+  .login-page h1 { text-align: center; margin-top: 0; font-size: 1.3rem; }
 </style>
 </head>
 <body>
-<h1>ApprovalFlow Login</h1>
+<div class="login-page">
+  <div class="card">
+    <h1>ApprovalFlow Login</h1>
 
-<form id="login-form">
-  <label for="username">Username</label>
-  <input type="text" id="username" required autocomplete="username" placeholder="dana">
+    <form id="login-form">
+      <label for="username">Username</label>
+      <input type="text" id="username" required autocomplete="username" placeholder="dana">
 
-  <label for="password">Password</label>
-  <input type="password" id="password" required autocomplete="current-password">
+      <label for="password">Password</label>
+      <input type="password" id="password" required autocomplete="current-password">
 
-  <button type="submit">Log in</button>
-</form>
+      <button type="submit" class="btn btn-primary btn-block">Log in</button>
+    </form>
 
-<div id="result"></div>
+    <div id="result" class="alert"></div>
+  </div>
+</div>
 
 <script>
 const GATEWAY_URL = "http://localhost:5000";
@@ -40,7 +42,7 @@ document.getElementById("login-form").addEventListener("submit", async (e) => {
   const username = document.getElementById("username").value.trim();
   const password = document.getElementById("password").value;
   const resultEl = document.getElementById("result");
-  resultEl.className = "";
+  resultEl.className = "alert";
 
   try {
     const res = await fetch(`${GATEWAY_URL}/auth/token`, {
@@ -50,7 +52,7 @@ document.getElementById("login-form").addEventListener("submit", async (e) => {
     });
 
     if (!res.ok) {
-      resultEl.className = "error";
+      resultEl.className = "alert error";
       resultEl.textContent = res.status === 401 ? "Invalid username or password." : `${res.status} - Login failed. Please try again.`;
       return;
     }
@@ -62,7 +64,7 @@ document.getElementById("login-form").addEventListener("submit", async (e) => {
 
     window.location.href = LANDING_PAGE[data.role] ?? "index.html";
   } catch (err) {
-    resultEl.className = "error";
+    resultEl.className = "alert error";
     resultEl.textContent = `Request failed: ${err.message}`;
   }
 });
