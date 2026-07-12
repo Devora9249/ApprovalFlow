@@ -2,7 +2,7 @@
 
 ## Context
 
-When an invoice is escalated for human review, the system must pause and wait for a human decision. The challenge: if the service restarts between escalation and the human's decision, the waiting state must survive (M11).
+When an invoice is escalated for human review, the system must pause and wait for a human decision. The challenge: if the service restarts between escalation and the human's decision, the waiting state must survive.
 
 Options considered:
 - **Dapr State Store** — save waiting state externally in Redis via Dapr
@@ -26,7 +26,7 @@ When an invoice is escalated:
 - Simple to implement — read/write key-value
 - Consistent with how all other invoice state is managed in the system
 
-**Negative / Trade-offs:**
+**Negative**
 - Pause/resume logic must be written manually (~30 lines) rather than being framework-provided
 - In a system with many complex multi-step workflows, MAF Workflow would be more appropriate
 

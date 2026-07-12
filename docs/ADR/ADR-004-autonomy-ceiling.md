@@ -4,7 +4,7 @@
 
 The assignment required choosing an autonomy posture: how much money and which categories the agent may approve autonomously. The provided `policy.md` suggested $250 as a conservative default with detailed per-category rules.
 
-See `docs/PRODUCT-DILEMMA.md` for the full justification. This ADR summarizes the architectural decision.
+
 
 ## Decision
 
@@ -29,9 +29,9 @@ Per-category sub-limits (MEAL-01, TRAVEL-02, SAAS-01, HW-02) were replaced with 
 - All global rules from policy.md are implemented
 - Per-category rules are easy to add later without changing the architecture
 
-**Negative / Trade-offs:**
+**Negative**
 - Edge cases exist: alcohol-only meals, flights under $500, expensive SaaS could pass Layer 1
 - Mitigated by: AI agent judgment + confidence threshold + Layer 3 deterministic gate
 - Per-category sub-limits are business-specific — every real client would bring their own
 
-**Why $500 and not $250:** see `docs/PRODUCT-DILEMMA.md` for full justification.
+

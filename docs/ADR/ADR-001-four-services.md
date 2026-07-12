@@ -24,9 +24,9 @@ We chose **4 services**:
 - Each service has one clear responsibility (Single Responsibility Principle)
 - IngestionService is intentionally tiny (~50 lines) — separates intake from processing
 - Clear boundary between business logic (Decision) and payment execution (Payment)
-- Satisfies M3 while showing genuine architectural thinking, not just the minimum
 
-**Negative / Trade-offs:**
+
+**Negative**
 - IngestionService adds one more Dockerfile and compose entry for a very small service
 - NotificationService was considered but merged into DecisionService to save time — this is a known trade-off
 

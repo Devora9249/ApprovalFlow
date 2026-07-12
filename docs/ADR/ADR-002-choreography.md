@@ -2,7 +2,7 @@
 
 ## Context
 
-The payment flow requires a saga pattern — multiple steps across services with compensation on failure (M9). We needed to choose between two saga implementation styles:
+The payment flow requires a saga pattern — multiple steps across services with compensation on failure. We needed to choose between two saga implementation styles:
 
 - **Choreography**: each service reacts to events independently via pub/sub, no central coordinator
 - **Orchestration**: a central coordinator drives each step explicitly
@@ -24,7 +24,7 @@ The payment flow consists of 2-3 steps:
 - Fewer moving parts — no orchestrator class or coordinator service needed
 - Simple to implement for a 2-3 step flow
 
-**Negative / Trade-offs:**
+**Negative**
 - Flow is distributed across services — harder to trace end-to-end without good logging
 - Must rely on correlation id (= invoiceId) to follow a single invoice across events
 - In a real production system with 10+ saga steps, orchestration would be preferred for visibility

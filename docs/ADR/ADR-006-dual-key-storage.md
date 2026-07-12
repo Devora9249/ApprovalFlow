@@ -30,9 +30,9 @@ All writes go through a single `UpdateInvoiceState` method that updates both key
 - No new infrastructure — reuses Dapr State Store already required by M5
 - Centralizing writes through `UpdateInvoiceState` prevents the two copies from drifting out of sync
 
-**Negative / Trade-offs:**
+**Negative**
 - Data is duplicated in storage (2x writes, 2x space) for every invoice
 - Any new code path that mutates invoice state must go through `UpdateInvoiceState` — never write directly to a single key
 - In a relational database, this would be a single record with a unique index — the dual-key pattern is a Redis-specific workaround
 
-**This pattern is documented** in `DEVELOPMENT.md` with Redis inspection commands so any developer can verify both keys are in sync.
+
