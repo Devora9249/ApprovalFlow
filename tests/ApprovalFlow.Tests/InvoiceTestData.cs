@@ -10,8 +10,8 @@ internal static class InvoiceTestData
     {
         CeilingAmount = 500m,
         ConfidenceThreshold = 0.80,
-        WhiteListCategories = ["office_supplies", "business_meals", "transportation", "software", "hardware"],
-        KnownVendors = ["Staples", "Bistro 19", "Uber"]
+        WhiteListCategoriesRaw = "office_supplies,business_meals,transportation,software,hardware",
+        KnownVendorsRaw = "Staples,Bistro 19,Uber"
     };
 
     public static InvoiceSubmission ValidInvoice(

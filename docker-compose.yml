@@ -76,6 +76,8 @@ services:
       - TZ=Asia/Jerusalem
       - Autonomy__CeilingAmount=${AUTONOMY_CEILING:-500}
       - Autonomy__ConfidenceThreshold=${AUTONOMY_CONFIDENCE:-0.80}
+      - Autonomy__WhiteListCategories=${WHITELIST_CATEGORIES:-office_supplies,business_meals,transportation,software,hardware}
+      - Autonomy__KnownVendors=${KNOWN_VENDORS:-Staples,Amazon Business,Uber,Bistro 19,Microsoft,Dell Technologies,Delta Airlines}
       - Llm__Provider=${LLM_PROVIDER:-gemini}
       - Llm__Model=${LLM_MODEL:-gemini-2.5-flash}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
