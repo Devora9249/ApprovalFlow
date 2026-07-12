@@ -120,6 +120,4 @@ CI (`.github/workflows/ci.yml`) builds all 4 services and runs the unit test sui
 ## Further Reading
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — system design, decision logic (Layers 1–3), all sequence/state diagrams, trade-offs
-- [DEVELOPMENT.md](DEVELOPMENT.md) — local dev environment, ports, debugging, logs, Redis inspection
-- [CLAUDE.md](CLAUDE.md) — build rules and specification this project was implemented against
 - Architecture Decision Records — [docs/ADR-001-four-services.md](docs/ADR-001-four-services.md), [docs/ADR-002-choreography.md](docs/ADR-002-choreography.md), [docs/ADR-003-dapr-state-hitl.md](docs/ADR-003-dapr-state-hitl.md), [docs/ADR-004-autonomy-ceiling.md](docs/ADR-004-autonomy-ceiling.md), [docs/ADR-005-no-postgresql.md](docs/ADR-005-no-postgresql.md), [docs/ADR-006-dual-key-storage.md](docs/ADR-006-dual-key-storage.md)

@@ -23,7 +23,7 @@ public class PipelineIntegrationTests
         CeilingAmount = 500m,
         ConfidenceThreshold = 0.80,
         WhiteListCategoriesRaw = "office_supplies,business_meals,transportation,software,hardware",
-        KnownVendorsRaw = "Staples,Amazon Business,Uber,Bistro 19,Microsoft,Dell Technologies,Delta Airlines"
+        KnownVendorsRaw = "Staples,Amazon,Uber,Bistro 19,Microsoft,Dell Technologies,Delta Airlines"
     };
 
     private static InvoiceProcessor CreateProcessor(
